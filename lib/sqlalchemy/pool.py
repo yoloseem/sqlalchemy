@@ -274,10 +274,10 @@ class Pool(log.Identified):
 
         try:
             rec = self._threadconns.current()
-            if rec:
-                return rec.checkout_existing()
         except AttributeError:
             pass
+        else:
+            return rec.checkout_existing()
 
         return _ConnectionFairy.checkout(self, self._threadconns)
 
@@ -496,7 +496,7 @@ class _ConnectionFairy(object):
         raise exc.InvalidRequestError("This connection is closed")
 
     def checkout_existing(self):
-        return _ConnectionFairy.checkout(self.pool, fairy=self)
+        return _ConnectionFairy.checkout(self._pool, fairy=self)
 
     def checkin(self):
         _finalize_fairy(self.connection, self._connection_record,
