@@ -218,7 +218,7 @@ class Pool(log.Identified):
 
         """
 
-        return _ConnectionFairy(self).checkout()
+        return _ConnectionFairy.checkout(self)
 
     def _create_connection(self):
         """Called by subclasses to create a new ConnectionRecord."""
@@ -270,18 +270,16 @@ class Pool(log.Identified):
 
         """
         if not self._use_threadlocal:
-            return _ConnectionFairy(self).checkout()
+            return _ConnectionFairy.checkout(self)
 
         try:
             rec = self._threadconns.current()
             if rec:
-                return rec.checkout()
+                return rec.checkout_existing()
         except AttributeError:
             pass
 
-        agent = _ConnectionFairy(self)
-        self._threadconns.current = weakref.ref(agent)
-        return agent.checkout()
+        return _ConnectionFairy.checkout(self, self._threadconns)
 
     def _return_conn(self, record):
         """Given a _ConnectionRecord, return it to the :class:`.Pool`.
@@ -328,28 +326,25 @@ class _ConnectionRecord(object):
         return {}
 
     @classmethod
-    def checkout(cls, fairy):
-        pool = fairy._pool
-        try:
-            rec = fairy._connection_record = pool._do_get()
-            conn = fairy.connection = fairy._connection_record.get_connection()
-            rec.fairy = weakref.ref(
-                            fairy,
-                            lambda ref: _finalize_fairy and \
-                                _finalize_fairy(conn, rec, pool, ref, pool._echo)
-                        )
-            _refs.add(rec)
-        except:
-            # helps with endless __getattr__ loops later on
-            fairy.connection = None
-            fairy._connection_record = None
-            raise
-        if fairy._echo:
+    def checkout(cls, pool):
+        rec = pool._do_get()
+        dbapi_connection = rec.get_connection()
+        fairy = _ConnectionFairy(dbapi_connection, rec)
+        rec.fairy_ref = weakref.ref(
+                        fairy,
+                        lambda ref: _finalize_fairy and \
+                            _finalize_fairy(
+                                    dbapi_connection,
+                                    rec, pool, ref, pool._echo)
+                    )
+        _refs.add(rec)
+        if pool._echo:
             pool.logger.debug("Connection %r checked out from pool",
-                       fairy.connection)
+                       dbapi_connection)
+        return fairy
 
     def checkin(self):
-        self.fairy = None
+        self.fairy_ref = None
         connection = self.connection
         pool = self.__pool
         while self.finalize_callback:
@@ -407,7 +402,7 @@ class _ConnectionRecord(object):
             raise
 
 
-def _finalize_fairy(connection, connection_record, pool, ref, echo):
+def _finalize_fairy(connection, connection_record, pool, ref, echo, fairy=None):
     """Cleanup for a :class:`._ConnectionFairy` whether or not it's already
     been garbage collected.
 
@@ -415,7 +410,7 @@ def _finalize_fairy(connection, connection_record, pool, ref, echo):
     _refs.discard(connection_record)
 
     if ref is not None and \
-                connection_record.fairy is not ref:
+                connection_record.fairy_ref is not ref:
         return
 
     if connection is not None:
@@ -424,27 +419,25 @@ def _finalize_fairy(connection, connection_record, pool, ref, echo):
                                     connection)
 
         try:
+            fairy = fairy or _ConnectionFairy(connection, connection_record)
             if pool.dispatch.reset:
-                pool.dispatch.reset(connection, connection_record)
+                pool.dispatch.reset(fairy, connection_record)
             if pool._reset_on_return is reset_rollback:
                 if echo:
                     pool.logger.debug("Connection %s rollback-on-return",
                                                     connection)
-                # TODO: this should be a fairy, either existing
-                # one or an ad-hoc in the case of garbage collected
-                pool._dialect.do_rollback(connection)
+                pool._dialect.do_rollback(fairy)
             elif pool._reset_on_return is reset_commit:
                 if echo:
                     pool.logger.debug("Connection %s commit-on-return",
                                                     connection)
-                # TODO: this should be a fairy, either existing
-                # one or an ad-hoc in the case of garbage collected
-                pool._dialect.do_commit(connection)
+                pool._dialect.do_commit(fairy)
+
             # Immediately close detached instances
             if not connection_record:
                 pool._close_connection(connection)
         except Exception as e:
-            if connection_record is not None:
+            if connection_record:
                 connection_record.invalidate(e=e)
             if isinstance(e, (SystemExit, KeyboardInterrupt)):
                 raise
@@ -460,11 +453,58 @@ class _ConnectionFairy(object):
     """Proxies a DB-API connection and provides return-on-dereference
     support."""
 
-    def __init__(self, pool):
-        self._pool = pool
-        self.__counter = 0
-        self._echo = pool._should_log_debug()
-        _ConnectionRecord.checkout(self)
+    def __init__(self, dbapi_connection, connection_record):
+        self.connection = dbapi_connection
+        self._connection_record = connection_record
+
+    @classmethod
+    def checkout(cls, pool, threadconns=None, fairy=None):
+        if not fairy:
+            fairy = _ConnectionRecord.checkout(pool)
+
+            fairy._pool = pool
+            fairy._counter = 0
+            fairy._echo = pool._should_log_debug()
+
+            if threadconns is not None:
+                threadconns.current = weakref.ref(fairy)
+
+        if fairy.connection is None:
+            raise exc.InvalidRequestError("This connection is closed")
+        fairy._counter += 1
+
+        if not pool.dispatch.checkout or fairy._counter != 1:
+            return fairy
+
+        # Pool listeners can trigger a reconnection on checkout
+        attempts = 2
+        while attempts > 0:
+            try:
+                pool.dispatch.checkout(fairy.connection,
+                                            fairy._connection_record,
+                                            fairy)
+                return fairy
+            except exc.DisconnectionError as e:
+                pool.logger.info(
+                    "Disconnection detected on checkout: %s", e)
+                fairy._connection_record.invalidate(e)
+                fairy.connection = fairy._connection_record.get_connection()
+                attempts -= 1
+
+        pool.logger.info("Reconnection attempts exhausted on checkout")
+        fairy.invalidate()
+        raise exc.InvalidRequestError("This connection is closed")
+
+    def checkout_existing(self):
+        return _ConnectionFairy.checkout(self.pool, fairy=self)
+
+    def checkin(self):
+        _finalize_fairy(self.connection, self._connection_record,
+                            self._pool, None, self._echo, fairy=self)
+        self.connection = None
+        self._connection_record = None
+
+    _close = checkin
 
     @property
     def _logger(self):
@@ -496,7 +536,7 @@ class _ConnectionFairy(object):
 
         if self.connection is None:
             raise exc.InvalidRequestError("This connection is closed")
-        if self._connection_record is not None:
+        if self._connection_record:
             self._connection_record.invalidate(e=e)
         self.connection = None
         self.checkin()
@@ -507,40 +547,6 @@ class _ConnectionFairy(object):
     def __getattr__(self, key):
         return getattr(self.connection, key)
 
-    def checkout(self):
-        if self.connection is None:
-            raise exc.InvalidRequestError("This connection is closed")
-        self.__counter += 1
-
-        if not self._pool.dispatch.checkout or self.__counter != 1:
-            return self
-
-        # Pool listeners can trigger a reconnection on checkout
-        attempts = 2
-        while attempts > 0:
-            try:
-                self._pool.dispatch.checkout(self.connection,
-                                            self._connection_record,
-                                            self)
-                return self
-            except exc.DisconnectionError as e:
-                self._pool.logger.info(
-                "Disconnection detected on checkout: %s", e)
-                self._connection_record.invalidate(e)
-                self.connection = self._connection_record.get_connection()
-                attempts -= 1
-
-        self._pool.logger.info("Reconnection attempts exhausted on checkout")
-        self.invalidate()
-        raise exc.InvalidRequestError("This connection is closed")
-
-    def checkin(self):
-        _finalize_fairy(self.connection, self._connection_record,
-                            self._pool, None, self._echo)
-        self.connection = None
-        self._connection_record = None
-
-    _close = checkin
 
     def detach(self):
         """Separate this connection from its Pool.
@@ -557,15 +563,15 @@ class _ConnectionFairy(object):
 
         if self._connection_record is not None:
             _refs.remove(self._connection_record)
-            self._connection_record.fairy = None
+            self._connection_record.fairy_ref = None
             self._connection_record.connection = None
             self._pool._do_return_conn(self._connection_record)
             self.info = self.info.copy()
             self._connection_record = None
 
     def close(self):
-        self.__counter -= 1
-        if self.__counter == 0:
+        self._counter -= 1
+        if self._counter == 0:
             self.checkin()
 
 
