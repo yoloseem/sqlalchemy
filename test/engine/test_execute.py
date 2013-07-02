@@ -1148,63 +1148,58 @@ class EngineEventsTest(fixtures.TestBase):
         e1 = testing_engine(config.db_url)
         e2 = testing_engine(config.db_url)
 
-        canary = []
-        def before_exec(conn, stmt, *arg):
-            canary.append(stmt)
-        event.listen(e1, "before_execute", before_exec)
+        canary = Mock()
+        event.listen(e1, "before_execute", canary)
         s1 = select([1])
         s2 = select([2])
         e1.execute(s1)
         e2.execute(s2)
-        eq_(canary, [s1])
-        event.listen(e2, "before_execute", before_exec)
+        eq_(
+            [arg[1][1] for arg in canary.mock_calls], [s1]
+        )
+        event.listen(e2, "before_execute", canary)
         e1.execute(s1)
         e2.execute(s2)
-        eq_(canary, [s1, s1, s2])
+        eq_([arg[1][1] for arg in canary.mock_calls], [s1, s1, s2])
 
     def test_per_engine_plus_global(self):
-        canary = []
-        def be1(conn, stmt, *arg):
-            canary.append('be1')
-        def be2(conn, stmt, *arg):
-            canary.append('be2')
-        def be3(conn, stmt, *arg):
-            canary.append('be3')
-
-        event.listen(Engine, "before_execute", be1)
+        canary = Mock()
+        event.listen(Engine, "before_execute", canary.be1)
         e1 = testing_engine(config.db_url)
         e2 = testing_engine(config.db_url)
 
-        event.listen(e1, "before_execute", be2)
+        event.listen(e1, "before_execute", canary.be2)
 
-        event.listen(Engine, "before_execute", be3)
+        event.listen(Engine, "before_execute", canary.be3)
         e1.connect()
         e2.connect()
-        canary[:] = []
+
         e1.execute(select([1]))
+        canary.be1.assert_call_count(1)
+        canary.be2.assert_call_count(1)
+
         e2.execute(select([1]))
 
-        eq_(canary, ['be1', 'be3', 'be2', 'be1', 'be3'])
+        canary.be1.assert_call_count(2)
+        canary.be2.assert_call_count(1)
+        canary.be3.assert_call_count(2)
 
     def test_per_connection_plus_engine(self):
-        canary = []
-        def be1(conn, stmt, *arg):
-            canary.append('be1')
-        def be2(conn, stmt, *arg):
-            canary.append('be2')
+        canary = Mock()
         e1 = testing_engine(config.db_url)
 
-        event.listen(e1, "before_execute", be1)
+        event.listen(e1, "before_execute", canary.be1)
 
         conn = e1.connect()
-        event.listen(conn, "before_execute", be2)
-        canary[:] = []
+        event.listen(conn, "before_execute", canary.be2)
         conn.execute(select([1]))
 
-        eq_(canary, ['be2', 'be1'])
+        canary.be1.assert_call_count(1)
+        canary.be2.assert_call_count(1)
 
         conn._branch().execute(select([1]))
-        eq_(canary, ['be2', 'be1', 'be2', 'be1'])
+        canary.be1.assert_call_count(2)
+        canary.be2.assert_call_count(2)
 
     def test_argument_format_execute(self):
         def before_execute(conn, clauseelement, multiparams, params):
