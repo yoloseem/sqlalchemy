@@ -657,7 +657,7 @@ class ConnectionEvents(event.Events):
             :meth:`.PoolEvents.checkout` the lower-level pool checkout event
             for an individual DBAPI connection
 
-            :meth:`.ConnectionEvents.set_connectionexecution_options` - a copy of a
+            :meth:`.ConnectionEvents.set_connection_execution_options` - a copy of a
             :class:`.Connection` is also made when the
             :meth:`.Connection.execution_options` method is called.
 
@@ -696,7 +696,7 @@ class ConnectionEvents(event.Events):
         method is called.
 
         The :meth:`.Engine.execution_options` method produces a shallow
-        copy of the :meth:`.Engine` which stores the new options.  That new
+        copy of the :class:`.Engine` which stores the new options.  That new
         :class:`.Engine` is passed here.   A particular application of this
         method is to add a :meth:`.ConnectionEvents.engine_connect` event
         handler to the given :class:`.Engine` which will perform some per-
