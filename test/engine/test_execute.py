@@ -1014,6 +1014,53 @@ class ResultProxyTest(fixtures.TestBase):
             finally:
                 r.close()
 
+class ExecutionOptionsTest(fixtures.TestBase):
+    def test_dialect_conn_options(self):
+        engine = testing_engine("sqlite://")
+        engine.dialect = Mock()
+        conn = engine.connect()
+        c2 = conn.execution_options(foo="bar")
+        eq_(
+            engine.dialect.set_connection_execution_options.mock_calls,
+            [call(c2, {"foo": "bar"})]
+        )
+
+    def test_dialect_engine_options(self):
+        engine = testing_engine("sqlite://")
+        engine.dialect = Mock()
+        e2 = engine.execution_options(foo="bar")
+        eq_(
+            engine.dialect.set_engine_execution_options.mock_calls,
+            [call(e2, {"foo": "bar"})]
+        )
+
+    def test_dialect_engine_construction_options(self):
+        dialect = Mock()
+        engine = Engine(Mock(), dialect, Mock(),
+                                execution_options={"foo": "bar"})
+        eq_(
+            dialect.set_engine_execution_options.mock_calls,
+            [call(engine, {"foo": "bar"})]
+        )
+
+    def test_propagate_engine_to_connection(self):
+        engine = testing_engine("sqlite://",
+                        options=dict(execution_options={"foo": "bar"}))
+        conn = engine.connect()
+        eq_(conn._execution_options, {"foo": "bar"})
+
+    def test_propagate_option_engine_to_connection(self):
+        e1 = testing_engine("sqlite://",
+                        options=dict(execution_options={"foo": "bar"}))
+        e2 = e1.execution_options(bat="hoho")
+        c1 = e1.connect()
+        c2 = e2.connect()
+        eq_(c1._execution_options, {"foo": "bar"})
+        eq_(c2._execution_options, {"foo": "bar", "bat": "hoho"})
+
+
+
+
 
 class AlternateResultProxyTest(fixtures.TestBase):
     __requires__ = ('sqlite', )
@@ -1319,6 +1366,44 @@ class EngineEventsTest(fixtures.TestBase):
         eq_(
             canary, ['execute', 'cursor_execute']
         )
+
+    def test_engine_connect(self):
+        engine = engines.testing_engine()
+
+        tracker = Mock()
+        event.listen(engine, "engine_connect", tracker)
+
+        c1 = engine.connect()
+        c2 = c1._branch()
+        c1.close()
+        eq_(
+            tracker.mock_calls,
+            [call(c1, False), call(c2, True)]
+        )
+
+    def test_execution_options(self):
+        engine = engines.testing_engine()
+
+        engine_tracker = Mock()
+        conn_tracker = Mock()
+
+        event.listen(engine, "set_engine_execution_options", engine_tracker)
+        event.listen(engine, "set_connection_execution_options", conn_tracker)
+
+        e2 = engine.execution_options(e1='opt_e1')
+        c1 = engine.connect()
+        c2 = c1.execution_options(c1='opt_c1')
+        c3 = e2.connect()
+        c4 = c3.execution_options(c3='opt_c3')
+        eq_(
+            engine_tracker.mock_calls,
+            [call(e2, {'e1': 'opt_e1'})]
+        )
+        eq_(
+            conn_tracker.mock_calls,
+            [call(c2, {"c1": "opt_c1"}), call(c4, {"c3": "opt_c3"})]
+        )
+
 
     @testing.requires.sequences
     @testing.provide_metadata

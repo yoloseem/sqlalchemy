@@ -205,7 +205,7 @@ class Connection(Connectable):
         c = self._clone()
         c._execution_options = c._execution_options.union(opt)
         if self._has_events:
-            self.dispatch.set_connection_execution_options(self, opt)
+            self.dispatch.set_connection_execution_options(c, opt)
         self.dialect.set_connection_execution_options(c, opt)
         return c
 
