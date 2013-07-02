@@ -25,6 +25,7 @@ from .util import queue as sqla_queue
 from .util import threading, memoized_property, \
     chop_traceback
 
+from collections import deque
 proxies = {}
 
 
@@ -311,11 +312,11 @@ class Pool(log.Identified):
 
 
 class _ConnectionRecord(object):
-    finalize_callback = None
 
     def __init__(self, pool):
         self.__pool = pool
         self.connection = self.__connect()
+        self.finalize_callback = deque()
 
         pool.dispatch.first_connect.\
                     for_modify(pool.dispatch).\
@@ -325,6 +326,39 @@ class _ConnectionRecord(object):
     @util.memoized_property
     def info(self):
         return {}
+
+    @classmethod
+    def checkout(cls, fairy):
+        pool = fairy._pool
+        try:
+            rec = fairy._connection_record = pool._do_get()
+            conn = fairy.connection = fairy._connection_record.get_connection()
+            rec.fairy = weakref.ref(
+                            fairy,
+                            lambda ref: _finalize_fairy and \
+                                _finalize_fairy(conn, rec, pool, ref, pool._echo)
+                        )
+            _refs.add(rec)
+        except:
+            # helps with endless __getattr__ loops later on
+            fairy.connection = None
+            fairy._connection_record = None
+            raise
+        if fairy._echo:
+            pool.logger.debug("Connection %r checked out from pool",
+                       fairy.connection)
+
+    def checkin(self):
+        self.fairy = None
+        connection = self.connection
+        pool = self.__pool
+        while self.finalize_callback:
+            finalizer = self.finalize_callback.pop()
+            finalizer(connection)
+        if pool.dispatch.checkin:
+            pool.dispatch.checkin(connection, self)
+        pool._return_conn(self)
+
 
     def close(self):
         if self.connection is not None:
@@ -374,6 +408,10 @@ class _ConnectionRecord(object):
 
 
 def _finalize_fairy(connection, connection_record, pool, ref, echo):
+    """Cleanup for a :class:`._ConnectionFairy` whether or not it's already
+    been garbage collected.
+
+    """
     _refs.discard(connection_record)
 
     if ref is not None and \
@@ -392,14 +430,18 @@ def _finalize_fairy(connection, connection_record, pool, ref, echo):
                 if echo:
                     pool.logger.debug("Connection %s rollback-on-return",
                                                     connection)
+                # TODO: this should be a fairy, either existing
+                # one or an ad-hoc in the case of garbage collected
                 pool._dialect.do_rollback(connection)
             elif pool._reset_on_return is reset_commit:
                 if echo:
-                    pool.logger.debug("Conneciton %s commit-on-return",
+                    pool.logger.debug("Connection %s commit-on-return",
                                                     connection)
+                # TODO: this should be a fairy, either existing
+                # one or an ad-hoc in the case of garbage collected
                 pool._dialect.do_commit(connection)
             # Immediately close detached instances
-            if connection_record is None:
+            if not connection_record:
                 pool._close_connection(connection)
         except Exception as e:
             if connection_record is not None:
@@ -407,14 +449,8 @@ def _finalize_fairy(connection, connection_record, pool, ref, echo):
             if isinstance(e, (SystemExit, KeyboardInterrupt)):
                 raise
 
-    if connection_record is not None:
-        connection_record.fairy = None
-        if connection_record.finalize_callback:
-            connection_record.finalize_callback(connection)
-            del connection_record.finalize_callback
-        if pool.dispatch.checkin:
-            pool.dispatch.checkin(connection, connection_record)
-        pool._return_conn(connection_record)
+    if connection_record:
+        connection_record.checkin()
 
 
 _refs = set()
@@ -427,24 +463,8 @@ class _ConnectionFairy(object):
     def __init__(self, pool):
         self._pool = pool
         self.__counter = 0
-        self._echo = _echo = pool._should_log_debug()
-        try:
-            rec = self._connection_record = pool._do_get()
-            conn = self.connection = self._connection_record.get_connection()
-            rec.fairy = weakref.ref(
-                            self,
-                            lambda ref: _finalize_fairy and \
-                                _finalize_fairy(conn, rec, pool, ref, _echo)
-                        )
-            _refs.add(rec)
-        except:
-            # helps with endless __getattr__ loops later on
-            self.connection = None
-            self._connection_record = None
-            raise
-        if self._echo:
-            self._pool.logger.debug("Connection %r checked out from pool",
-                       self.connection)
+        self._echo = pool._should_log_debug()
+        _ConnectionRecord.checkout(self)
 
     @property
     def _logger(self):
@@ -465,10 +485,7 @@ class _ConnectionFairy(object):
         in subsequent instances of :class:`.ConnectionFairy`.
 
         """
-        try:
-            return self._connection_record.info
-        except AttributeError:
-            raise exc.InvalidRequestError("This connection is closed")
+        return self._connection_record.info
 
     def invalidate(self, e=None):
         """Mark this connection as invalidated.
@@ -482,7 +499,7 @@ class _ConnectionFairy(object):
         if self._connection_record is not None:
             self._connection_record.invalidate(e=e)
         self.connection = None
-        self._close()
+        self.checkin()
 
     def cursor(self, *args, **kwargs):
         return self.connection.cursor(*args, **kwargs)
@@ -517,6 +534,14 @@ class _ConnectionFairy(object):
         self.invalidate()
         raise exc.InvalidRequestError("This connection is closed")
 
+    def checkin(self):
+        _finalize_fairy(self.connection, self._connection_record,
+                            self._pool, None, self._echo)
+        self.connection = None
+        self._connection_record = None
+
+    _close = checkin
+
     def detach(self):
         """Separate this connection from its Pool.
 
@@ -541,13 +566,8 @@ class _ConnectionFairy(object):
     def close(self):
         self.__counter -= 1
         if self.__counter == 0:
-            self._close()
+            self.checkin()
 
-    def _close(self):
-        _finalize_fairy(self.connection, self._connection_record,
-                            self._pool, None, self._echo)
-        self.connection = None
-        self._connection_record = None
 
 
 class SingletonThreadPool(Pool):
