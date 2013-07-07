@@ -151,6 +151,9 @@ class InstanceEvents(event.Events):
        object, rather than the mapped instance itself.
 
     """
+
+    _target_class_doc = "SomeMappedClass"
+
     @classmethod
     def _accept_with(cls, target):
         if isinstance(target, orm.instrumentation.ClassManager):
@@ -449,6 +452,8 @@ class MapperEvents(event.Events):
          :meth:`~.MapperEvents.create_instance`.
 
     """
+
+    _target_class_doc = "SomeMappedClass"
 
     @classmethod
     def _accept_with(cls, target):

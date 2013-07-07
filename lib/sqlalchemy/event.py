@@ -186,9 +186,10 @@ def _create_dispatcher_class(cls, classname, bases, dict_):
     cls.dispatch = dispatch_cls = type("%sDispatch" % classname,
                                         (dispatch_base, ), {})
     dispatch_cls._listen = cls._listen
+
     for k in dict_:
         if _is_event_name(k):
-            setattr(dispatch_cls, k, _DispatchDescriptor(dict_[k]))
+            setattr(dispatch_cls, k, _DispatchDescriptor(cls, dict_[k]))
             _registrars[k].append(cls)
 
 
@@ -239,12 +240,12 @@ class Events(util.with_metaclass(_EventMeta, object)):
 class _DispatchDescriptor(object):
     """Class-level attributes on :class:`._Dispatch` classes."""
 
-    def __init__(self, fn):
+    def __init__(self, parent_dispatch_cls, fn):
         self.__name__ = fn.__name__
         argspec = util.inspect_getargspec(fn)
         self.arg_names = argspec.args[1:]
         self.has_kw = bool(argspec.keywords)
-        self.__doc__ = fn.__doc__ = self._augment_fn_docs(fn)
+        self.__doc__ = fn.__doc__ = self._augment_fn_docs(parent_dispatch_cls, fn)
 
         self._clslevel = weakref.WeakKeyDictionary()
         self._empty_listeners = weakref.WeakKeyDictionary()
@@ -274,7 +275,7 @@ class _DispatchDescriptor(object):
                     for line in text.split("\n")
                 )
 
-    def _standard_listen_example(self, fn):
+    def _standard_listen_example(self, sample_target, fn):
         example_kw_arg = self._indent(
                 "\n".join(
                     "%(arg)s = kw['%(arg)s']" % {"arg": arg}
@@ -284,13 +285,13 @@ class _DispatchDescriptor(object):
         return (
                 "from sqlalchemy import event\n\n"
                 "# standard decorator style\n"
-                "@event.listens_for(obj, '%(event_name)s')\n"
+                "@event.listens_for(%(sample_target)s, '%(event_name)s')\n"
                 "def receive_%(event_name)s(%(named_event_arguments)s%(has_kw_arguments)s):\n"
                 "    \"listen for the '%(event_name)s' event\"\n"
                 "    # ... (event handling logic) ...\n"
 
                 "\n# keyword argument style (new in 0.9)\n"
-                "@event.listens_for(obj, '%(event_name)s')\n"
+                "@event.listens_for(%(sample_target)s, '%(event_name)s')\n"
                 "def receive_%(event_name)s(**kw):\n"
                 "    \"listen for the '%(event_name)s' event\"\n"
                 "%(example_kw_arg)s\n"
@@ -300,19 +301,20 @@ class _DispatchDescriptor(object):
                     "event_name": fn.__name__,
                     "has_kw_arguments": " **kw" if self.has_kw else "",
                     "named_event_arguments": ", ".join(self.arg_names),
-                    "example_kw_arg": example_kw_arg
+                    "example_kw_arg": example_kw_arg,
+                    "sample_target": sample_target
                 }
             )
 
-    def _augment_fn_docs(self, fn):
+    def _augment_fn_docs(self, parent_dispatch_cls, fn):
         header = ".. container:: event_signatures\n\n"\
                 "     Listen examples::\n"\
                 "\n"
 
-
+        sample_target = getattr(parent_dispatch_cls, "_target_class_doc", "obj")
         text = (
                 header +
-                self._indent(self._standard_listen_example(fn), " " * 8)
+                self._indent(self._standard_listen_example(sample_target, fn), " " * 8)
             )
         return util.inject_docstring_text(fn.__doc__,
                 text,
