@@ -218,11 +218,14 @@ class Events(util.with_metaclass(_EventMeta, object)):
 
     @classmethod
     def _listen(cls, target, identifier, fn, propagate=False, insert=False):
+        dispatch_descriptor = getattr(target.dispatch, identifier)
+        fn = dispatch_descriptor._adjust_fn_spec(fn)
+
         if insert:
-            getattr(target.dispatch, identifier).\
+            dispatch_descriptor.\
                     for_modify(target.dispatch).insert(fn, target, propagate)
         else:
-            getattr(target.dispatch, identifier).\
+            dispatch_descriptor.\
                     for_modify(target.dispatch).append(fn, target, propagate)
 
     @classmethod
@@ -243,6 +246,9 @@ class _DispatchDescriptor(object):
 
         self._clslevel = weakref.WeakKeyDictionary()
         self._empty_listeners = weakref.WeakKeyDictionary()
+
+    def _adjust_fn_spec(self, fn):
+        return fn
 
     def _standard_listen_example(self, fn):
         return (
@@ -370,8 +376,11 @@ class _DispatchDescriptor(object):
         obj.__dict__[self.__name__] = ret
         return ret
 
+class _HasParentDispatchDescriptor(object):
+    def _adjust_fn_spec(self, fn):
+        return self.parent._adjust_fn_spec(fn)
 
-class _EmptyListener(object):
+class _EmptyListener(_HasParentDispatchDescriptor):
     """Serves as a class-level interface to the events
     served by a _DispatchDescriptor, when there are no
     instance-level events present.
@@ -383,11 +392,12 @@ class _EmptyListener(object):
     def __init__(self, parent, target_cls):
         if target_cls not in parent._clslevel:
             parent.update_subclass(target_cls)
-        self.parent = parent
+        self.parent = parent  # _DispatchDescriptor
         self.parent_listeners = parent._clslevel[target_cls]
         self.name = parent.__name__
         self.propagate = frozenset()
         self.listeners = ()
+
 
     def for_modify(self, obj):
         """Return an event collection which can be modified.
@@ -426,7 +436,7 @@ class _EmptyListener(object):
     __nonzero__ = __bool__
 
 
-class _CompoundListener(object):
+class _CompoundListener(_HasParentDispatchDescriptor):
     _exec_once = False
 
     def exec_once(self, *args, **kw):
@@ -478,6 +488,7 @@ class _ListenerCollection(_CompoundListener):
         if target_cls not in parent._clslevel:
             parent.update_subclass(target_cls)
         self.parent_listeners = parent._clslevel[target_cls]
+        self.parent = parent
         self.name = parent.__name__
         self.listeners = []
         self.propagate = set()
@@ -565,6 +576,9 @@ class _JoinedListener(_CompoundListener):
         # be via @property to just return getattr(self.parent, self.name)
         # each time. less performant.
         self.listeners = list(getattr(self.parent, self.name))
+
+    def _adjust_fn_spec(self, fn):
+        return self.local._adjust_fn_spec(fn)
 
     def for_modify(self, obj):
         self.local = self.parent_listeners = self.local.for_modify(obj)
