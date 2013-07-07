@@ -239,9 +239,55 @@ class _DispatchDescriptor(object):
 
     def __init__(self, fn):
         self.__name__ = fn.__name__
-        self.__doc__ = fn.__doc__
+        self.__doc__ = fn.__doc__ = self._augment_fn_docs(fn)
+
         self._clslevel = weakref.WeakKeyDictionary()
         self._empty_listeners = weakref.WeakKeyDictionary()
+
+    def _standard_listen_example(self, fn):
+        return (
+                "from sqlalchemy import event\n\n"
+                "# standard decorator style\n"
+                "@event.listens_for(target, '%(event_name)s')\n"
+                "def receive_%(event_name)s(%(named_event_arguments)s):\n"
+                "    \"listen for the '%(event_name)s' event\"\n"
+                "    # ... (event handling logic) ...\n"
+
+                "\n# keyword argument style (new in 0.9)\n"
+                "@event.listens_for(target, '%(event_name)s')\n"
+                "def receive_%(event_name)s(**kw):\n"
+                "    \"listen for the '%(event_name)s' event\"\n"
+                "    %(arg1)s = kw['%(arg1)s']\n"
+                "    %(arg2)s = kw['%(arg2)s']\n"
+                "    # ... (event handling logic) ...\n"
+                %
+                {
+                    "event_name": fn.__name__,
+                    "named_event_arguments": "arg1, arg2, arg3",
+                    "arg1": "arg1",
+                    "arg2": "arg2"
+                }
+            )
+
+    def _augment_fn_docs(self, fn):
+        header = ".. container:: event_signatures\n\n"\
+                "     Listen examples::\n"\
+                "\n"
+
+        def indent(text, indent):
+            return "\n".join(
+                        indent + line
+                        for line in text.split("\n")
+                    )
+
+        text = (
+                header +
+                indent(self._standard_listen_example(fn), " " * 8)
+            )
+        return util.inject_docstring_text(fn.__doc__,
+                text,
+                1
+            )
 
     def _contains(self, cls, evt):
         return cls in self._clslevel and \

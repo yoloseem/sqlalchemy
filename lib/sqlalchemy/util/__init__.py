@@ -33,7 +33,7 @@ from .langhelpers import iterate_attributes, class_hierarchy, \
     generic_repr, counter, PluginLoader, hybridmethod, safe_reraise
 
 from .deprecations import warn_deprecated, warn_pending_deprecation, \
-    deprecated, pending_deprecation
+    deprecated, pending_deprecation, inject_docstring_text
 
 # things that used to be not always available,
 # but are now as of current support Python versions
