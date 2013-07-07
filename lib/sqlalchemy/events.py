@@ -753,7 +753,7 @@ class ConnectionEvents(event.Events):
         :param conn: :class:`.Connection` object
         """
 
-    def savepoint(self, conn, name=None):
+    def savepoint(self, conn, name):
         """Intercept savepoint() events.
 
         :param conn: :class:`.Connection` object

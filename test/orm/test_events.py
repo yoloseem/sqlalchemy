@@ -341,12 +341,12 @@ class DeferredMapperEventsTest(_RemoveListeners, _fixtures.FixtureTest):
                                 self.classes.User)
 
         canary = []
-        def evt(x):
+        def evt(x, y, z):
             canary.append(x)
         event.listen(User, "before_insert", evt, raw=True)
 
         m = mapper(User, users)
-        m.dispatch.before_insert(5)
+        m.dispatch.before_insert(5, 6, 7)
         eq_(canary, [5])
 
     def test_deferred_map_event_subclass_propagate(self):
@@ -363,12 +363,12 @@ class DeferredMapperEventsTest(_RemoveListeners, _fixtures.FixtureTest):
             pass
 
         canary = []
-        def evt(x):
+        def evt(x, y, z):
             canary.append(x)
         event.listen(User, "before_insert", evt, propagate=True, raw=True)
 
         m = mapper(SubUser, users)
-        m.dispatch.before_insert(5)
+        m.dispatch.before_insert(5, 6, 7)
         eq_(canary, [5])
 
     def test_deferred_map_event_subclass_no_propagate(self):
@@ -385,12 +385,12 @@ class DeferredMapperEventsTest(_RemoveListeners, _fixtures.FixtureTest):
             pass
 
         canary = []
-        def evt(x):
+        def evt(x, y, z):
             canary.append(x)
         event.listen(User, "before_insert", evt, propagate=False)
 
         m = mapper(SubUser, users)
-        m.dispatch.before_insert(5)
+        m.dispatch.before_insert(5, 6, 7)
         eq_(canary, [])
 
     def test_deferred_map_event_subclass_post_mapping_propagate(self):
@@ -409,11 +409,11 @@ class DeferredMapperEventsTest(_RemoveListeners, _fixtures.FixtureTest):
         m = mapper(SubUser, users)
 
         canary = []
-        def evt(x):
+        def evt(x, y, z):
             canary.append(x)
         event.listen(User, "before_insert", evt, propagate=True, raw=True)
 
-        m.dispatch.before_insert(5)
+        m.dispatch.before_insert(5, 6, 7)
         eq_(canary, [5])
 
     def test_deferred_instance_event_subclass_post_mapping_propagate(self):

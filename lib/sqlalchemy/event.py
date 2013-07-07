@@ -6,6 +6,8 @@
 
 """Base event API."""
 
+from __future__ import absolute_import
+
 from . import util, exc
 from itertools import chain
 import weakref
@@ -76,6 +78,15 @@ def remove(target, identifier, fn):
         for tgt in evt_cls._accept_with(target):
             tgt.dispatch._remove(identifier, tgt, fn)
             return
+
+def _legacy_signature(since, argnames):
+    def leg(fn):
+        if not hasattr(fn, '_legacy_signatures'):
+            fn._legacy_signatures = []
+        fn._legacy_signatures.append((since, argnames))
+        return fn
+    return leg
+
 
 _registrars = util.defaultdict(list)
 
@@ -217,9 +228,10 @@ class Events(util.with_metaclass(_EventMeta, object)):
             return None
 
     @classmethod
-    def _listen(cls, target, identifier, fn, propagate=False, insert=False):
+    def _listen(cls, target, identifier, fn, propagate=False, insert=False,
+                            named=False):
         dispatch_descriptor = getattr(target.dispatch, identifier)
-        fn = dispatch_descriptor._adjust_fn_spec(fn)
+        fn = dispatch_descriptor._adjust_fn_spec(fn, named)
 
         if insert:
             dispatch_descriptor.\
@@ -245,27 +257,50 @@ class _DispatchDescriptor(object):
         argspec = util.inspect_getargspec(fn)
         self.arg_names = argspec.args[1:]
         self.has_kw = bool(argspec.keywords)
+        self.legacy_signatures = list(reversed(
+                        sorted(
+                            getattr(fn, '_legacy_signatures', []),
+                            key=lambda s: s[0]
+                        )
+                    ))
         self.__doc__ = fn.__doc__ = self._augment_fn_docs(parent_dispatch_cls, fn)
 
         self._clslevel = weakref.WeakKeyDictionary()
         self._empty_listeners = weakref.WeakKeyDictionary()
 
-    def _adjust_fn_spec(self, fn):
-        argspec = util.inspect_getargspec(fn)
-        fn = self._wrap_fn_for_kw(fn, argspec)
+    def _adjust_fn_spec(self, fn, named):
+        argspec = util.get_callable_argspec(fn)
+        if named:
+            fn = self._wrap_fn_for_kw(fn)
+        fn = self._wrap_fn_for_legacy(fn, argspec)
         return fn
 
-    def _wrap_fn_for_kw(self, fn, argspec):
-        if not argspec.args and argspec.keywords:
-            if self.has_kw:
-                def wrap_kw(*args, **kw):
-                    kw.update(zip(self.arg_names, args))
-                    return fn(**kw)
+    def _wrap_fn_for_kw(self, fn):
+        def wrap_kw(*args, **kw):
+            argdict = dict(zip(self.arg_names, args))
+            argdict.update(kw)
+            return fn(**argdict)
+        return wrap_kw
+
+    def _wrap_fn_for_legacy(self, fn, argspec):
+        for since, argnames in self.legacy_signatures:
+            if argnames[-1] == "**kw":
+                has_kw = True
+                argnames = argnames[0:-1]
             else:
-                def wrap_kw(*args):
-                    kw = dict(zip(self.arg_names, args))
-                    return fn(**kw)
-            return wrap_kw
+                has_kw = False
+
+            if len(argnames) == len(argspec.args) \
+                and has_kw is bool(argspec.keywords):
+
+                def wrap_leg(*args, **kw):
+                    argdict = dict(zip(self.arg_names, args))
+                    args = [argdict[name] for name in argnames]
+                    if has_kw:
+                        return fn(*args, **kw)
+                    else:
+                        return fn(*args)
+                return wrap_leg
         else:
             return fn
 
@@ -282,22 +317,27 @@ class _DispatchDescriptor(object):
                     for arg in self.arg_names[0:2]
                 ),
                 "    ")
+        if self.legacy_signatures:
+            current_since = max(since for since, args in self.legacy_signatures)
+        else:
+            current_since = None
         return (
                 "from sqlalchemy import event\n\n"
-                "# standard decorator style\n"
+                "# standard decorator style%(current_since)s\n"
                 "@event.listens_for(%(sample_target)s, '%(event_name)s')\n"
                 "def receive_%(event_name)s(%(named_event_arguments)s%(has_kw_arguments)s):\n"
                 "    \"listen for the '%(event_name)s' event\"\n"
-                "    # ... (event handling logic) ...\n"
+                "\n    # ... (event handling logic) ...\n"
 
-                "\n# keyword argument style (new in 0.9)\n"
-                "@event.listens_for(%(sample_target)s, '%(event_name)s')\n"
+                "\n# named argument style (new in 0.9)\n"
+                "@event.listens_for(%(sample_target)s, '%(event_name)s', named=True)\n"
                 "def receive_%(event_name)s(**kw):\n"
                 "    \"listen for the '%(event_name)s' event\"\n"
                 "%(example_kw_arg)s\n"
-                "    # ... (event handling logic) ...\n"
+                "\n    # ... (event handling logic) ...\n"
                 %
                 {
+                    "current_since": " (arguments as of %s)" % current_since if current_since else "",
                     "event_name": fn.__name__,
                     "has_kw_arguments": " **kw" if self.has_kw else "",
                     "named_event_arguments": ", ".join(self.arg_names),
@@ -306,16 +346,59 @@ class _DispatchDescriptor(object):
                 }
             )
 
+    def _legacy_listen_examples(self, sample_target, fn):
+        text = ""
+        for since, args in self.legacy_signatures:
+            text += (
+                "\n# legacy calling style (pre-%(since)s)\n"
+                "@event.listens_for(%(sample_target)s, '%(event_name)s')\n"
+                "def receive_%(event_name)s(%(named_event_arguments)s%(has_kw_arguments)s):\n"
+                "    \"listen for the '%(event_name)s' event\"\n"
+                "\n    # ... (event handling logic) ...\n" % {
+                    "since": since,
+                    "event_name": fn.__name__,
+                    "has_kw_arguments": " **kw" if self.has_kw else "",
+                    "named_event_arguments": ", ".join(args),
+                    "sample_target": sample_target
+                }
+            )
+        return text
+
+    def _version_signature_changes(self):
+        since, args = self.legacy_signatures[0]
+        return (
+                "\n.. versionchanged:: %(since)s\n"
+                "    The ``%(event_name)s`` event now accepts the \n"
+                "    arguments ``%(named_event_arguments)s%(has_kw_arguments)s``.\n"
+                "    Listener functions which accept the previous argument \n"
+                "    signature(s) listed above will be automatically \n"
+                "    adapted to the new signature." % {
+                    "since": since,
+                    "event_name": self.__name__,
+                    "named_event_arguments": ", ".join(self.arg_names),
+                    "has_kw_arguments": ", **kw" if self.has_kw else ""
+                }
+            )
+
     def _augment_fn_docs(self, parent_dispatch_cls, fn):
         header = ".. container:: event_signatures\n\n"\
-                "     Listen examples::\n"\
+                "     Supported argument forms::\n"\
                 "\n"
 
         sample_target = getattr(parent_dispatch_cls, "_target_class_doc", "obj")
         text = (
                 header +
-                self._indent(self._standard_listen_example(sample_target, fn), " " * 8)
+                self._indent(
+                            self._standard_listen_example(sample_target, fn),
+                            " " * 8)
             )
+        if self.legacy_signatures:
+            text += self._indent(
+                            self._legacy_listen_examples(sample_target, fn),
+                            " " * 8)
+
+            text += self._version_signature_changes()
+
         return util.inject_docstring_text(fn.__doc__,
                 text,
                 1
@@ -403,8 +486,8 @@ class _DispatchDescriptor(object):
         return ret
 
 class _HasParentDispatchDescriptor(object):
-    def _adjust_fn_spec(self, fn):
-        return self.parent._adjust_fn_spec(fn)
+    def _adjust_fn_spec(self, fn, named):
+        return self.parent._adjust_fn_spec(fn, named)
 
 class _EmptyListener(_HasParentDispatchDescriptor):
     """Serves as a class-level interface to the events
@@ -603,8 +686,8 @@ class _JoinedListener(_CompoundListener):
         # each time. less performant.
         self.listeners = list(getattr(self.parent, self.name))
 
-    def _adjust_fn_spec(self, fn):
-        return self.local._adjust_fn_spec(fn)
+    def _adjust_fn_spec(self, fn, named):
+        return self.local._adjust_fn_spec(fn, named)
 
     def for_modify(self, obj):
         self.local = self.parent_listeners = self.local.for_modify(obj)
