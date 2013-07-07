@@ -269,7 +269,7 @@ class _DispatchDescriptor(object):
         self._empty_listeners = weakref.WeakKeyDictionary()
 
     def _adjust_fn_spec(self, fn, named):
-        argspec = util.get_callable_argspec(fn)
+        argspec = util.get_callable_argspec(fn, no_self=True)
         if named:
             fn = self._wrap_fn_for_kw(fn)
         fn = self._wrap_fn_for_legacy(fn, argspec)
@@ -326,13 +326,17 @@ class _DispatchDescriptor(object):
             current_since = max(since for since, args, conv in self.legacy_signatures)
         else:
             current_since = None
-        return (
+        text = (
                 "from sqlalchemy import event\n\n"
                 "# standard decorator style%(current_since)s\n"
                 "@event.listens_for(%(sample_target)s, '%(event_name)s')\n"
                 "def receive_%(event_name)s(%(named_event_arguments)s%(has_kw_arguments)s):\n"
                 "    \"listen for the '%(event_name)s' event\"\n"
                 "\n    # ... (event handling logic) ...\n"
+        )
+
+        if len(self.arg_names) > 2:
+            text += (
 
                 "\n# named argument style (new in 0.9)\n"
                 "@event.listens_for(%(sample_target)s, '%(event_name)s', named=True)\n"
@@ -340,16 +344,18 @@ class _DispatchDescriptor(object):
                 "    \"listen for the '%(event_name)s' event\"\n"
                 "%(example_kw_arg)s\n"
                 "\n    # ... (event handling logic) ...\n"
-                %
-                {
-                    "current_since": " (arguments as of %s)" % current_since if current_since else "",
+            )
+
+        text %= {
+                    "current_since": " (arguments as of %s)" %
+                                    current_since if current_since else "",
                     "event_name": fn.__name__,
                     "has_kw_arguments": " **kw" if self.has_kw else "",
                     "named_event_arguments": ", ".join(self.arg_names),
                     "example_kw_arg": example_kw_arg,
                     "sample_target": sample_target
                 }
-            )
+        return text
 
     def _legacy_listen_examples(self, sample_target, fn):
         text = ""
@@ -387,7 +393,7 @@ class _DispatchDescriptor(object):
 
     def _augment_fn_docs(self, parent_dispatch_cls, fn):
         header = ".. container:: event_signatures\n\n"\
-                "     Supported argument forms::\n"\
+                "     Example argument forms::\n"\
                 "\n"
 
         sample_target = getattr(parent_dispatch_cls, "_target_class_doc", "obj")

@@ -42,6 +42,8 @@ class InstrumentationEvents(event.Events):
 
     """
 
+    _target_class_doc = "SomeBaseClass"
+
     @classmethod
     def _accept_with(cls, target):
         # TODO: there's no coverage for this
@@ -1088,6 +1090,9 @@ class SessionEvents(event.Events):
     globally.
 
     """
+
+    _target_class_doc = "SomeSessionOrFactory"
+
     @classmethod
     def _accept_with(cls, target):
         if isinstance(target, orm.scoped_session):
@@ -1387,31 +1392,55 @@ class SessionEvents(event.Events):
 
         """
 
-    def after_bulk_update(self, session, query, query_context, result):
+    @event._legacy_signature("0.9",
+                    ["session", "query", "query_context", "result"],
+                    lambda update_context: (
+                            update_context.session,
+                            update_context.query,
+                            update_context.context,
+                            update_context.result))
+    def after_bulk_update(self, update_context):
         """Execute after a bulk update operation to the session.
 
         This is called as a result of the :meth:`.Query.update` method.
 
-        :param query: the :class:`.Query` object that this update operation was
-         called upon.
-        :param query_context: The :class:`.QueryContext` object, corresponding
-         to the invocation of an ORM query.
-        :param result: the :class:`.ResultProxy` returned as a result of the
-         bulk UPDATE operation.
+        :param update_context: an "update context" object which contains
+         details about the update, including these attributes:
+
+            * ``session`` - the :class:`.Session` involved
+            * ``query`` -the :class:`.Query` object that this update operation was
+              called upon.
+            * ``context`` The :class:`.QueryContext` object, corresponding
+              to the invocation of an ORM query.
+            * ``result`` the :class:`.ResultProxy` returned as a result of the
+              bulk UPDATE operation.
+
 
         """
 
-    def after_bulk_delete(self, session, query, query_context, result):
+    @event._legacy_signature("0.9",
+                    ["session", "query", "query_context", "result"],
+                    lambda delete_context: (
+                            delete_context.session,
+                            delete_context.query,
+                            delete_context.context,
+                            delete_context.result))
+    def after_bulk_delete(self, delete_context):
         """Execute after a bulk delete operation to the session.
 
         This is called as a result of the :meth:`.Query.delete` method.
 
-        :param query: the :class:`.Query` object that this update operation was
-         called upon.
-        :param query_context: The :class:`.QueryContext` object, corresponding
-         to the invocation of an ORM query.
-        :param result: the :class:`.ResultProxy` returned as a result of the
-         bulk DELETE operation.
+        :param delete_context: a "delete context" object which contains
+         details about the update, including these attributes:
+
+            * ``session`` - the :class:`.Session` involved
+            * ``query`` -the :class:`.Query` object that this update operation was
+              called upon.
+            * ``context`` The :class:`.QueryContext` object, corresponding
+              to the invocation of an ORM query.
+            * ``result`` the :class:`.ResultProxy` returned as a result of the
+              bulk DELETE operation.
+
 
         """
 
@@ -1472,6 +1501,8 @@ class AttributeEvents(event.Events):
       or "append" event.
 
     """
+
+    _target_class_doc = "SomeClass.some_attribute"
 
     @classmethod
     def _accept_with(cls, target):

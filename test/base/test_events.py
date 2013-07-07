@@ -259,6 +259,21 @@ class DynamicSignatureTest(fixtures.TestBase):
             [call(4, 5, 9, 20)]
         )
 
+    def test_legacy_accept_from_method(self):
+        canary = Mock()
+
+        class MyClass(object):
+            def handler1(self, x, y):
+                canary(x, y)
+
+        event.listen(self.TargetOne, "event_three", MyClass().handler1)
+
+        self.TargetOne().dispatch.event_three(4, 5, 6, 7)
+        eq_(
+            canary.mock_calls,
+            [call(4, 5)]
+        )
+
     def test_standard_accept(self):
         canary = Mock()
 
