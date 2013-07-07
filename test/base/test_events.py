@@ -171,6 +171,69 @@ class EventsTest(fixtures.TestBase):
                 meth
             )
 
+class DynamicSignatureTest(fixtures.TestBase):
+    """test adaption of kwargs and legacy args"""
+
+
+    def tearDown(self):
+        event._remove_dispatcher(self.TargetOne.__dict__['dispatch'].events)
+
+    def setUp(self):
+        class TargetEventsOne(event.Events):
+            def event_one(self, x, y):
+                pass
+
+            def event_two(self, x, y, **kw):
+                pass
+
+        class TargetOne(object):
+            dispatch = event.dispatcher(TargetEventsOne)
+        self.TargetOne = TargetOne
+
+
+    def test_standard_accept(self):
+        canary = Mock()
+
+        @event.listens_for(self.TargetOne, "event_one")
+        def handler1(x, y):
+            canary(x, y)
+
+        self.TargetOne().dispatch.event_one(4, 5)
+
+        eq_(
+            canary.mock_calls,
+            [call(4, 5)]
+        )
+
+    def test_kw_accept(self):
+        canary = Mock()
+
+        @event.listens_for(self.TargetOne, "event_one")
+        def handler1(**kw):
+            canary(kw)
+
+        self.TargetOne().dispatch.event_one(4, 5)
+
+        eq_(
+            canary.mock_calls,
+            [call({"x": 4, "y": 5})]
+        )
+
+    def test_kw_accept_plus_kw(self):
+        canary = Mock()
+
+        @event.listens_for(self.TargetOne, "event_two")
+        def handler1(**kw):
+            canary(kw)
+
+        self.TargetOne().dispatch.event_two(4, 5, z=8, q=5)
+
+        eq_(
+            canary.mock_calls,
+            [call({"x": 4, "y": 5, "z": 8, "q": 5})]
+        )
+
+
 class ClsLevelListenTest(fixtures.TestBase):
 
 

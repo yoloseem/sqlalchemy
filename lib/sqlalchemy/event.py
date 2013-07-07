@@ -186,7 +186,6 @@ def _create_dispatcher_class(cls, classname, bases, dict_):
     cls.dispatch = dispatch_cls = type("%sDispatch" % classname,
                                         (dispatch_base, ), {})
     dispatch_cls._listen = cls._listen
-
     for k in dict_:
         if _is_event_name(k):
             setattr(dispatch_cls, k, _DispatchDescriptor(dict_[k]))
@@ -242,36 +241,66 @@ class _DispatchDescriptor(object):
 
     def __init__(self, fn):
         self.__name__ = fn.__name__
+        argspec = util.inspect_getargspec(fn)
+        self.arg_names = argspec.args[1:]
+        self.has_kw = bool(argspec.keywords)
         self.__doc__ = fn.__doc__ = self._augment_fn_docs(fn)
 
         self._clslevel = weakref.WeakKeyDictionary()
         self._empty_listeners = weakref.WeakKeyDictionary()
 
     def _adjust_fn_spec(self, fn):
+        argspec = util.inspect_getargspec(fn)
+        fn = self._wrap_fn_for_kw(fn, argspec)
         return fn
 
+    def _wrap_fn_for_kw(self, fn, argspec):
+        if not argspec.args and argspec.keywords:
+            if self.has_kw:
+                def wrap_kw(*args, **kw):
+                    kw.update(zip(self.arg_names, args))
+                    return fn(**kw)
+            else:
+                def wrap_kw(*args):
+                    kw = dict(zip(self.arg_names, args))
+                    return fn(**kw)
+            return wrap_kw
+        else:
+            return fn
+
+    def _indent(self, text, indent):
+        return "\n".join(
+                    indent + line
+                    for line in text.split("\n")
+                )
+
     def _standard_listen_example(self, fn):
+        example_kw_arg = self._indent(
+                "\n".join(
+                    "%(arg)s = kw['%(arg)s']" % {"arg": arg}
+                    for arg in self.arg_names[0:2]
+                ),
+                "    ")
         return (
                 "from sqlalchemy import event\n\n"
                 "# standard decorator style\n"
-                "@event.listens_for(target, '%(event_name)s')\n"
-                "def receive_%(event_name)s(%(named_event_arguments)s):\n"
+                "@event.listens_for(obj, '%(event_name)s')\n"
+                "def receive_%(event_name)s(%(named_event_arguments)s%(has_kw_arguments)s):\n"
                 "    \"listen for the '%(event_name)s' event\"\n"
                 "    # ... (event handling logic) ...\n"
 
                 "\n# keyword argument style (new in 0.9)\n"
-                "@event.listens_for(target, '%(event_name)s')\n"
+                "@event.listens_for(obj, '%(event_name)s')\n"
                 "def receive_%(event_name)s(**kw):\n"
                 "    \"listen for the '%(event_name)s' event\"\n"
-                "    %(arg1)s = kw['%(arg1)s']\n"
-                "    %(arg2)s = kw['%(arg2)s']\n"
+                "%(example_kw_arg)s\n"
                 "    # ... (event handling logic) ...\n"
                 %
                 {
                     "event_name": fn.__name__,
-                    "named_event_arguments": "arg1, arg2, arg3",
-                    "arg1": "arg1",
-                    "arg2": "arg2"
+                    "has_kw_arguments": " **kw" if self.has_kw else "",
+                    "named_event_arguments": ", ".join(self.arg_names),
+                    "example_kw_arg": example_kw_arg
                 }
             )
 
@@ -280,15 +309,10 @@ class _DispatchDescriptor(object):
                 "     Listen examples::\n"\
                 "\n"
 
-        def indent(text, indent):
-            return "\n".join(
-                        indent + line
-                        for line in text.split("\n")
-                    )
 
         text = (
                 header +
-                indent(self._standard_listen_example(fn), " " * 8)
+                self._indent(self._standard_listen_example(fn), " " * 8)
             )
         return util.inject_docstring_text(fn.__doc__,
                 text,
