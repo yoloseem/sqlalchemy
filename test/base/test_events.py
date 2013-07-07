@@ -194,6 +194,12 @@ class DynamicSignatureTest(fixtures.TestBase):
             def event_five(self, x, y, z, q):
                 pass
 
+            @event._legacy_signature("0.9", ["x", "y", "z", "q"],
+                                lambda x, y: (x, y, x + y, x * y))
+            def event_six(self, x, y):
+                pass
+
+
         class TargetOne(object):
             dispatch = event.dispatcher(TargetEventsOne)
         self.TargetOne = TargetOne
@@ -238,6 +244,19 @@ class DynamicSignatureTest(fixtures.TestBase):
         eq_(
             canary.mock_calls,
             [call(4, 5, {"foo": "bar"})]
+        )
+
+    def test_complex_legacy_accept(self):
+        canary = Mock()
+
+        @event.listens_for(self.TargetOne, "event_six")
+        def handler1(x, y, z, q):
+            canary(x, y, z, q)
+
+        self.TargetOne().dispatch.event_six(4, 5)
+        eq_(
+            canary.mock_calls,
+            [call(4, 5, 9, 20)]
         )
 
     def test_standard_accept(self):

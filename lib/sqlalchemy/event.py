@@ -79,11 +79,11 @@ def remove(target, identifier, fn):
             tgt.dispatch._remove(identifier, tgt, fn)
             return
 
-def _legacy_signature(since, argnames):
+def _legacy_signature(since, argnames, converter=None):
     def leg(fn):
         if not hasattr(fn, '_legacy_signatures'):
             fn._legacy_signatures = []
-        fn._legacy_signatures.append((since, argnames))
+        fn._legacy_signatures.append((since, argnames, converter))
         return fn
     return leg
 
@@ -283,7 +283,7 @@ class _DispatchDescriptor(object):
         return wrap_kw
 
     def _wrap_fn_for_legacy(self, fn, argspec):
-        for since, argnames in self.legacy_signatures:
+        for since, argnames, conv in self.legacy_signatures:
             if argnames[-1] == "**kw":
                 has_kw = True
                 argnames = argnames[0:-1]
@@ -293,13 +293,18 @@ class _DispatchDescriptor(object):
             if len(argnames) == len(argspec.args) \
                 and has_kw is bool(argspec.keywords):
 
-                def wrap_leg(*args, **kw):
-                    argdict = dict(zip(self.arg_names, args))
-                    args = [argdict[name] for name in argnames]
-                    if has_kw:
-                        return fn(*args, **kw)
-                    else:
-                        return fn(*args)
+                if conv:
+                    assert not has_kw
+                    def wrap_leg(*args):
+                        return fn(*conv(*args))
+                else:
+                    def wrap_leg(*args, **kw):
+                        argdict = dict(zip(self.arg_names, args))
+                        args = [argdict[name] for name in argnames]
+                        if has_kw:
+                            return fn(*args, **kw)
+                        else:
+                            return fn(*args)
                 return wrap_leg
         else:
             return fn
@@ -318,7 +323,7 @@ class _DispatchDescriptor(object):
                 ),
                 "    ")
         if self.legacy_signatures:
-            current_since = max(since for since, args in self.legacy_signatures)
+            current_since = max(since for since, args, conv in self.legacy_signatures)
         else:
             current_since = None
         return (
@@ -348,7 +353,7 @@ class _DispatchDescriptor(object):
 
     def _legacy_listen_examples(self, sample_target, fn):
         text = ""
-        for since, args in self.legacy_signatures:
+        for since, args, conv in self.legacy_signatures:
             text += (
                 "\n# legacy calling style (pre-%(since)s)\n"
                 "@event.listens_for(%(sample_target)s, '%(event_name)s')\n"
@@ -365,7 +370,7 @@ class _DispatchDescriptor(object):
         return text
 
     def _version_signature_changes(self):
-        since, args = self.legacy_signatures[0]
+        since, args, conv = self.legacy_signatures[0]
         return (
                 "\n.. versionchanged:: %(since)s\n"
                 "    The ``%(event_name)s`` event now accepts the \n"
