@@ -171,9 +171,7 @@ class EventsTest(fixtures.TestBase):
                 meth
             )
 
-class DynamicSignatureTest(fixtures.TestBase):
-    """test adaption of kwargs and legacy args"""
-
+class NamedCallTest(fixtures.TestBase):
 
     def setUp(self):
         class TargetEventsOne(event.Events):
@@ -183,15 +181,73 @@ class DynamicSignatureTest(fixtures.TestBase):
             def event_two(self, x, y, **kw):
                 pass
 
+            def event_five(self, x, y, z, q):
+                pass
+
+        class TargetOne(object):
+            dispatch = event.dispatcher(TargetEventsOne)
+        self.TargetOne = TargetOne
+
+    def tearDown(self):
+        event._remove_dispatcher(self.TargetOne.__dict__['dispatch'].events)
+
+
+    def test_kw_accept(self):
+        canary = Mock()
+
+        @event.listens_for(self.TargetOne, "event_one", named=True)
+        def handler1(**kw):
+            canary(kw)
+
+        self.TargetOne().dispatch.event_one(4, 5)
+
+        eq_(
+            canary.mock_calls,
+            [call({"x": 4, "y": 5})]
+        )
+
+    def test_partial_kw_accept(self):
+        canary = Mock()
+
+        @event.listens_for(self.TargetOne, "event_five", named=True)
+        def handler1(z, y, **kw):
+            canary(z, y, kw)
+
+        self.TargetOne().dispatch.event_five(4, 5, 6, 7)
+
+        eq_(
+            canary.mock_calls,
+            [call(6, 5, {"x": 4, "q": 7})]
+        )
+
+    def test_kw_accept_plus_kw(self):
+        canary = Mock()
+
+        @event.listens_for(self.TargetOne, "event_two", named=True)
+        def handler1(**kw):
+            canary(kw)
+
+        self.TargetOne().dispatch.event_two(4, 5, z=8, q=5)
+
+        eq_(
+            canary.mock_calls,
+            [call({"x": 4, "y": 5, "z": 8, "q": 5})]
+        )
+
+
+class LegacySignatureTest(fixtures.TestBase):
+    """test adaption of legacy args"""
+
+
+    def setUp(self):
+        class TargetEventsOne(event.Events):
+
             @event._legacy_signature("0.9", ["x", "y"])
             def event_three(self, x, y, z, q):
                 pass
 
             @event._legacy_signature("0.9", ["x", "y", "**kw"])
             def event_four(self, x, y, z, q, **kw):
-                pass
-
-            def event_five(self, x, y, z, q):
                 pass
 
             @event._legacy_signature("0.9", ["x", "y", "z", "q"],
@@ -274,20 +330,6 @@ class DynamicSignatureTest(fixtures.TestBase):
             [call(4, 5)]
         )
 
-    def test_standard_accept(self):
-        canary = Mock()
-
-        @event.listens_for(self.TargetOne, "event_one")
-        def handler1(x, y):
-            canary(x, y)
-
-        self.TargetOne().dispatch.event_one(4, 5)
-
-        eq_(
-            canary.mock_calls,
-            [call(4, 5)]
-        )
-
     def test_standard_accept_has_legacies(self):
         canary = Mock()
 
@@ -298,34 +340,6 @@ class DynamicSignatureTest(fixtures.TestBase):
         eq_(
             canary.mock_calls,
             [call(4, 5)]
-        )
-
-    def test_kw_accept(self):
-        canary = Mock()
-
-        @event.listens_for(self.TargetOne, "event_one", named=True)
-        def handler1(**kw):
-            canary(kw)
-
-        self.TargetOne().dispatch.event_one(4, 5)
-
-        eq_(
-            canary.mock_calls,
-            [call({"x": 4, "y": 5})]
-        )
-
-    def test_partial_kw_accept(self):
-        canary = Mock()
-
-        @event.listens_for(self.TargetOne, "event_five", named=True)
-        def handler1(z, y, **kw):
-            canary(z, y, kw)
-
-        self.TargetOne().dispatch.event_five(4, 5, 6, 7)
-
-        eq_(
-            canary.mock_calls,
-            [call(6, 5, {"x": 4, "q": 7})]
         )
 
     def test_kw_accept_has_legacies(self):
@@ -340,20 +354,6 @@ class DynamicSignatureTest(fixtures.TestBase):
         eq_(
             canary.mock_calls,
             [call({"x": 4, "y": 5, "z": 6, "q": 7})]
-        )
-
-    def test_kw_accept_plus_kw(self):
-        canary = Mock()
-
-        @event.listens_for(self.TargetOne, "event_two", named=True)
-        def handler1(**kw):
-            canary(kw)
-
-        self.TargetOne().dispatch.event_two(4, 5, z=8, q=5)
-
-        eq_(
-            canary.mock_calls,
-            [call({"x": 4, "y": 5, "z": 8, "q": 5})]
         )
 
     def test_kw_accept_plus_kw_has_legacies(self):
