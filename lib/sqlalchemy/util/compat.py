@@ -33,6 +33,9 @@ else:
     except ImportError:
         import pickle
 
+ArgSpec = collections.namedtuple("ArgSpec",
+                ["args", "varargs", "keywords", "defaults"])
+
 if py3k:
     import builtins
 
@@ -43,11 +46,9 @@ if py3k:
 
     from io import BytesIO as byte_buffer
 
-    ArgSpec = collections.namedtuple("ArgSpec",
-                    ["args", "varargs", "keywords", "defaults"])
     def inspect_getargspec(func):
         return ArgSpec(
-                    getfullargspec(func)[0:4]
+                    *inspect_getfullargspec(func)[0:4]
                 )
 
     string_types = str,

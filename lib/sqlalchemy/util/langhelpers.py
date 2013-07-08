@@ -213,14 +213,12 @@ def get_func_kwargs(func):
 
     return compat.inspect_getargspec(func)[0]
 
-import collections
-ArgSpec = collections.namedtuple("ArgSpec", ["args", "varargs", "keywords", "defaults"])
 def get_callable_argspec(fn, no_self=False):
     if isinstance(fn, types.FunctionType):
         return compat.inspect_getargspec(fn)
     elif isinstance(fn, types.MethodType) and no_self:
         spec = compat.inspect_getargspec(fn.__func__)
-        return ArgSpec(spec.args[1:], spec.varargs, spec.keywords, spec.defaults)
+        return compat.ArgSpec(spec.args[1:], spec.varargs, spec.keywords, spec.defaults)
     elif hasattr(fn, '__func__'):
         return compat.inspect_getargspec(fn.__func__)
     elif hasattr(fn, '__call__'):
