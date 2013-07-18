@@ -39,7 +39,7 @@ def listen(target, identifier, fn, *args, **kw):
     for evt_cls in _registrars[identifier]:
         tgt = evt_cls._accept_with(target)
         if tgt is not None:
-            tgt.dispatch._listen(tgt, identifier, fn, *args, **kw)
+            _EventKey(target, identifier, fn, tgt).listen(*args, **kw)
             return
     raise exc.InvalidRequestError("No such event '%s' for target '%s'" %
                                 (identifier, target))
@@ -228,8 +228,10 @@ class Events(util.with_metaclass(_EventMeta, object)):
             return None
 
     @classmethod
-    def _listen(cls, target, identifier, fn, propagate=False, insert=False,
+    def _listen(cls, event_key, propagate=False, insert=False,
                             named=False):
+        target, identifier, fn = \
+            event_key.dispatch_target, event_key.identifier, event_key.fn
         dispatch_descriptor = getattr(target.dispatch, identifier)
         fn = dispatch_descriptor._adjust_fn_spec(fn, named)
 
@@ -733,3 +735,62 @@ class dispatcher(object):
             return self.dispatch_cls
         obj.__dict__['dispatch'] = disp = self.dispatch_cls(cls)
         return disp
+
+
+class _EventKey(object):
+    """Represents the arguments passed to :func:`.listen` and
+    provides managed registration services on behalf of those arguments.
+
+    By "managed registration", we mean that event listening functions and
+    other objects can be added to various collections in such a way that their
+    membership in all those collections can be revoked at once, based on
+    an equivalent :class:`._EventKey`.
+
+    """
+    # MARKMARK
+    def __init__(self, target, identifier, fn, dispatch_target):
+        self.target = target
+        self.identifier = identifier
+        self.fn = fn
+        self.dispatch_target = dispatch_target
+
+    def with_wrapper(self, fn_wrap):
+        return _EventKey(
+                self.target,
+                self.identifier,
+                fn_wrap,
+                self.dispatch_target
+                )
+
+    def with_dispatch_target(self, dispatch_target):
+        return _EventKey(
+                self.target,
+                self.identifier,
+                self.fn,
+                dispatch_target
+                )
+
+    def listen(self, *args, **kw):
+        self._listen_dispatch(self.dispatch_target.dispatch, *args, **kw)
+
+    def base_listen(self, *args, **kw):
+        self._listen_dispatch(Events, *args, **kw)
+
+    def _listen_dispatch(self, listen_with, *args, **kw):
+        listen_with._listen(
+                    self,
+                    *args,
+                    **kw
+                )
+
+    def append_list(self, list_, value):
+        list_.append(value)
+
+class _Registry(object):
+    """Tracks all listener functions and the collections they are a part
+    of, for removal purposes.
+    """
+
+
+
+

@@ -613,14 +613,14 @@ class ListenOverrideTest(fixtures.TestBase):
     def setUp(self):
         class TargetEvents(event.Events):
             @classmethod
-            def _listen(cls, target, identifier, fn, add=False):
+            def _listen(cls, event_key, add=False):
+                fn = event_key.fn
                 if add:
                     def adapt(x, y):
                         fn(x + y)
-                else:
-                    adapt = fn
+                    event_key = event_key.with_wrapper(adapt)
 
-                event.Events._listen(target, identifier, adapt)
+                event_key.base_listen()
 
             def event_one(self, x, y):
                 pass
