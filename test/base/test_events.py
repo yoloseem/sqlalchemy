@@ -84,7 +84,7 @@ class EventsTest(fixtures.TestBase):
         eq_(len(self.Target().dispatch.event_one), 2)
         eq_(len(t1.dispatch.event_one), 3)
 
-    def test_append_vs_insert(self):
+    def test_append_vs_insert_cls(self):
         def listen_one(x, y):
             pass
 
@@ -100,6 +100,26 @@ class EventsTest(fixtures.TestBase):
 
         eq_(
             list(self.Target().dispatch.event_one),
+            [listen_three, listen_one, listen_two]
+        )
+
+    def test_append_vs_insert_instance(self):
+        def listen_one(x, y):
+            pass
+
+        def listen_two(x, y):
+            pass
+
+        def listen_three(x, y):
+            pass
+
+        target = self.Target()
+        event.listen(target, "event_one", listen_one)
+        event.listen(target, "event_one", listen_two)
+        event.listen(target, "event_one", listen_three, insert=True)
+
+        eq_(
+            list(target.dispatch.event_one),
             [listen_three, listen_one, listen_two]
         )
 
