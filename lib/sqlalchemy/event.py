@@ -226,9 +226,7 @@ class Events(util.with_metaclass(_EventMeta, object)):
             return None
 
     @classmethod
-    def _listen(cls, event_key, propagate=False, insert=False,
-                            named=False):
-
+    def _listen(cls, event_key, propagate=False, insert=False, named=False):
         event_key.base_listen(propagate=propagate, insert=insert, named=named)
 
     @classmethod
@@ -406,12 +404,8 @@ class _DispatchDescriptor(object):
                 1
             )
 
-    def _contains(self, cls, evt):
-        return cls in self._clslevel and \
-            evt in self._clslevel[cls]
-
     def insert(self, event_key, propagate):
-        obj, target = event_key.fn, event_key.dispatch_target
+        target = event_key.dispatch_target
         assert isinstance(target, type), \
                 "Class-level Event targets must be classes."
         stack = [target]
@@ -423,10 +417,10 @@ class _DispatchDescriptor(object):
             else:
                 if cls not in self._clslevel:
                     self._clslevel[cls] = []
-                self._clslevel[cls].insert(0, obj)
+                event_key.prepend_to_list(self._clslevel[cls])
 
     def append(self, event_key, propagate):
-        obj, target = event_key.fn, event_key.dispatch_target
+        target = event_key.dispatch_target
         assert isinstance(target, type), \
                 "Class-level Event targets must be classes."
 
@@ -439,7 +433,7 @@ class _DispatchDescriptor(object):
             else:
                 if cls not in self._clslevel:
                     self._clslevel[cls] = []
-                self._clslevel[cls].append(obj)
+                event_key.append_to_list(self._clslevel[cls])
 
     def update_subclass(self, target):
         if target not in self._clslevel:
@@ -447,26 +441,27 @@ class _DispatchDescriptor(object):
         clslevel = self._clslevel[target]
         for cls in target.__mro__[1:]:
             if cls in self._clslevel:
-                clslevel.extend([
+                _EventKey.extend_list(
+                    clslevel, [
                     fn for fn
                     in self._clslevel[cls]
                     if fn not in clslevel
                 ])
 
     def remove(self, event_key):
-        obj, target = event_key.fn, event_key.dispatch_target
+        target = event_key.dispatch_target
         stack = [target]
         while stack:
             cls = stack.pop(0)
             stack.extend(cls.__subclasses__())
             if cls in self._clslevel:
-                self._clslevel[cls].remove(obj)
+                event_key.remove_from_list(self._clslevel[cls])
 
     def clear(self):
         """Clear all class level listeners"""
 
         for dispatcher in self._clslevel.values():
-            dispatcher[:] = []
+            _EventKey.clear_list(dispatcher)
 
     def for_modify(self, obj):
         """Return an event collection which can be modified.
@@ -561,14 +556,6 @@ class _CompoundListener(_HasParentDispatchDescriptor):
             self(*args, **kw)
             self._exec_once = True
 
-    # I'm not entirely thrilled about the overhead here,
-    # but this allows class-level listeners to be added
-    # at any point.
-    #
-    # In the absense of instance-level listeners,
-    # we stay with the _EmptyListener object when called
-    # at the instance level.
-
     def __call__(self, *args, **kw):
         """Execute this event."""
 
@@ -622,36 +609,31 @@ class _ListenerCollection(_CompoundListener):
 
         existing_listeners = self.listeners
         existing_listener_set = set(existing_listeners)
-        self.propagate.update(other.propagate)
-        existing_listeners.extend([l for l
-                                in other.listeners
-                                if l not in existing_listener_set
-                                and not only_propagate or l in self.propagate
-                                ])
+        _EventKey.update_set(self.propagate, other.propagate)
+        _EventKey.extend_list(
+            existing_listeners,
+            [l for l
+                in other.listeners
+                if l not in existing_listener_set
+                and not only_propagate or l in self.propagate
+                ]
+        )
 
     def insert(self, event_key, propagate):
-        obj, target = event_key.fn, event_key.dispatch_target
-        if obj not in self.listeners:
-            self.listeners.insert(0, obj)
-            if propagate:
-                self.propagate.add(obj)
+        if event_key.conditional_prepend(self.listeners) and propagate:
+            event_key.add_to_set(self.propagate)
 
     def append(self, event_key, propagate):
-        obj, target = event_key.fn, event_key.dispatch_target
-        if obj not in self.listeners:
-            self.listeners.append(obj)
-            if propagate:
-                self.propagate.add(obj)
+        if event_key.conditional_append(self.listeners) and propagate:
+            event_key.add_to_set(self.propagate)
 
     def remove(self, event_key):
-        obj, target = event_key.fn, event_key.dispatch_target
-        if obj in self.listeners:
-            self.listeners.remove(obj)
-            self.propagate.discard(obj)
+        event_key.discard_from_list(self.listeners)
+        event_key.discard_from_set(self.propagate)
 
     def clear(self):
-        self.listeners[:] = []
-        self.propagate.clear()
+        _EventKey.clear_list(self.listeners)
+        _EventKey.clear_set(self.propagate)
 
 
 class _JoinedDispatcher(object):
@@ -689,10 +671,18 @@ class _JoinedListener(_CompoundListener):
 
         # fix .listeners for the parent.  This means
         # new events added to the parent won't be picked
-        # up here.  Alternatively, the listeners can
-        # be via @property to just return getattr(self.parent, self.name)
-        # each time. less performant.
-        self.listeners = list(getattr(self.parent, self.name))
+        # up here, and also means listener functions are
+        # copied to a new list.
+        #self.listeners = _EventKey.copy_list(getattr(self.parent, self.name))
+
+    # Alternatively, the listeners can
+    # be via @property to just return getattr(self.parent, self.name)
+    # each time.  this is possibly less performant than having the list
+    # set up ahead of time, however it remains to be seen how expensive
+    # copy_list() is going to be.
+    @property
+    def listeners(self):
+        return getattr(self.parent, self.name)
 
     def _adjust_fn_spec(self, fn, named):
         return self.local._adjust_fn_spec(fn, named)
@@ -742,7 +732,6 @@ class _EventKey(object):
     an equivalent :class:`._EventKey`.
 
     """
-    # MARKMARK
     def __init__(self, target, identifier, fn, dispatch_target):
         self.target = target
         self.identifier = identifier
@@ -792,13 +781,67 @@ class _EventKey(object):
             dispatch_descriptor.\
                     for_modify(target.dispatch).insert(self, propagate)
         else:
-            # event_key.fn, event_key.dispatch_target
-            # fn, target
             dispatch_descriptor.\
                     for_modify(target.dispatch).append(self, propagate)
 
-    def append_list(self, list_, value):
+    def append_value_to_list(self, list_, value):
         list_.append(value)
+
+    def append_to_list(self, list_):
+        list_.append(self.fn)
+
+    def remove_from_list(self, list_):
+        list_.remove(self.fn)
+
+    def prepend_to_list(self, list_):
+        list_.insert(0, self.fn)
+
+    def conditional_prepend(self, list_):
+        if self.fn not in list_:
+            list_.insert(0, self.fn)
+            return True
+        else:
+            return False
+
+    def conditional_append(self, list_):
+        if self.fn not in list_:
+            list_.append(self.fn)
+            return True
+        else:
+            return False
+
+    def discard_from_list(self, list_):
+        value = self.fn
+        if value in list_:
+            list_.remove(value)
+
+    def discard_from_set(self, set_):
+        value = self.fn
+        set_.discard(value)
+
+    def add_to_set(self, set_):
+        value = self.fn
+        set_.add(value)
+
+    @classmethod
+    def update_set(cls, destination, source):
+        destination.update(source)
+
+    @classmethod
+    def extend_list(cls, list_, extend):
+        list_.extend(extend)
+
+    @classmethod
+    def copy_list(cls, sequence):
+        return list(sequence)
+
+    @classmethod
+    def clear_list(cls, list_):
+        list_[:] = []
+
+    @classmethod
+    def clear_set(cls, set_):
+        set_.clear()
 
 class _Registry(object):
     """Tracks all listener functions and the collections they are a part

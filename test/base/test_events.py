@@ -862,13 +862,19 @@ class JoinTest(fixtures.TestBase):
         element.run_event(2)
         element.run_event(3)
 
-        # c1 gets no events due to _JoinedListener
-        # fixing the "parent" at construction time.
-        # this can be changed to be "live" at the cost
-        # of performance.
+        # if _JoinedListener fixes .listeners
+        # at construction time, then we don't get
+        # the new listeners.
+        #eq_(l1.mock_calls, [])
+
+        # alternatively, if _JoinedListener shares the list
+        # using a @property, then we get them, at the arguable
+        # expense of the extra method call to access the .listeners
+        # collection
         eq_(
-            l1.mock_calls, []
+            l1.mock_calls, [call(element, 2), call(element, 3)]
         )
+
         eq_(
             l2.mock_calls,
             [call(element, 1), call(element, 2), call(element, 3)]
