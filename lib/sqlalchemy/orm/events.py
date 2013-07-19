@@ -356,7 +356,6 @@ class _EventsHold(object):
             else:
                 collection = target.all_holds[target.class_] = []
 
-            #collection.append((identifier, fn, raw, propagate))
             event_key.append_list(collection, (event_key, raw, propagate))
 
             if propagate:
@@ -366,29 +365,23 @@ class _EventsHold(object):
                     stack.extend(subclass.__subclasses__())
                     subject = target.resolve(subclass)
                     if subject is not None:
-                        event_key.with_dispatch_target(subject).listen(raw=raw, propagate=propagate)
+                        event_key.with_dispatch_target(subject).\
+                                listen(raw=raw, propagate=propagate)
 
     @classmethod
     def populate(cls, class_, subject):
         for subclass in class_.__mro__:
             if subclass in cls.all_holds:
-                if subclass is class_:
-                    collection = cls.all_holds.pop(subclass)
-                else:
-                    collection = cls.all_holds[subclass]
+                collection = cls.all_holds[subclass]
                 for event_key, raw, propagate in collection:
                     if propagate or subclass is class_:
-#                        import pdb
-#                        pdb.set_trace()
-                        ident = event_key.identifier
-                        fn = event_key.fn
-                        key = event._EventKey(None, ident, fn, subject)
-#                        key.listen(raw=raw, propagate=propagate)
-# TODO: ! this is a bug!  the raw/propagate weren't being passed properly
-# add tests, port to 0.8, get this to work correctly
-                        subject.dispatch._listen(key, raw, propagate) #raw=raw, propagate=propagate)
-#                        subject.dispatch._listen(key, raw=raw, propagate=propagate)
-#                        event_key.with_dispatch_target(subject).listen(raw=raw, propagate=propagate)
+                        # since we can't be sure in what order different classes
+                        # in a hierarchy are triggered with populate(),
+                        # we rely upon _EventsHold for all event
+                        # assignment, instead of using the generic propagate
+                        # flag.
+                        event_key.with_dispatch_target(subject).\
+                            listen(raw=raw, propagate=False)
 
 
 class _InstanceEventsHold(_EventsHold):
