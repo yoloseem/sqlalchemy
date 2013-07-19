@@ -619,21 +619,17 @@ class DeferredMapperEventsTest(_RemoveListeners, _fixtures.FixtureTest):
         class Bar(object):
             pass
 
-        listeners = instrumentation._instrumentation_factory.dispatch.\
-                            attribute_instrument.listeners
-        assert not listeners
+        dispatch = instrumentation._instrumentation_factory.dispatch
+        assert not dispatch.attribute_instrument
 
-        canary = []
-        def evt(x):
-            canary.append(x)
-        event.listen(Bar, "attribute_instrument", evt)
+        event.listen(Bar, "attribute_instrument", lambda: None)
 
-        eq_(len(listeners), 1)
+        eq_(len(dispatch.attribute_instrument), 1)
 
         del Bar
         gc_collect()
 
-        assert not listeners
+        assert not dispatch.attribute_instrument
 
 
     def test_deferred_instrument_event_subclass_propagate(self):

@@ -75,10 +75,7 @@ def remove(target, identifier, fn):
     be supported.
 
     """
-    for evt_cls in _registrars[identifier]:
-        for tgt in evt_cls._accept_with(target):
-            tgt.dispatch._remove(identifier, tgt, fn)
-            return
+    raise NotImplementedError()
 
 def _legacy_signature(since, argnames, converter=None):
     def leg(fn):
