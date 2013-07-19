@@ -65,8 +65,8 @@ class InstrumentationEvents(event.Events):
                 return fn(target_cls, *arg)
 
         def remove(ref):
-            event.Events._remove(orm.instrumentation._instrumentation_factory,
-                                            identifier, listen)
+            key = event._EventKey(None, identifier, listen, orm.instrumentation._instrumentation_factory)
+            key.remove()
 
         target = weakref.ref(target.class_, remove)
 

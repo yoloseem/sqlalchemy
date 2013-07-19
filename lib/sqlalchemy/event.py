@@ -226,15 +226,14 @@ class Events(util.with_metaclass(_EventMeta, object)):
             return None
 
     @classmethod
-    def _listen(cls, self, propagate=False, insert=False,
+    def _listen(cls, event_key, propagate=False, insert=False,
                             named=False):
 
-        self._listen(propagate=propagate, insert=insert, named=named)
-
+        event_key.base_listen(propagate=propagate, insert=insert, named=named)
 
     @classmethod
-    def _remove(cls, target, identifier, fn):
-        getattr(target.dispatch, identifier).remove(fn, target)
+    def _remove(cls, event_key):
+        event_key.remove()
 
     @classmethod
     def _clear(cls):
@@ -454,8 +453,8 @@ class _DispatchDescriptor(object):
                     if fn not in clslevel
                 ])
 
-    def remove(self, obj, target):
-        #obj, target = event_key.fn, event_key.dispatch_target
+    def remove(self, event_key):
+        obj, target = event_key.fn, event_key.dispatch_target
         stack = [target]
         while stack:
             cls = stack.pop(0)
@@ -644,8 +643,8 @@ class _ListenerCollection(_CompoundListener):
             if propagate:
                 self.propagate.add(obj)
 
-    def remove(self, obj, target):
-        #obj, target = event_key.fn, event_key.dispatch_target
+    def remove(self, event_key):
+        obj, target = event_key.fn, event_key.dispatch_target
         if obj in self.listeners:
             self.listeners.remove(obj)
             self.propagate.discard(obj)
@@ -773,20 +772,14 @@ class _EventKey(object):
                 )
 
     def listen(self, *args, **kw):
-        self._listen_dispatch(self.dispatch_target.dispatch, *args, **kw)
+        self.dispatch_target.dispatch._listen(self, *args, **kw)
 
-    def base_listen(self, *args, **kw):
-        self._listen_dispatch(Events, *args, **kw)
+    def remove(self):
+        getattr(self.dispatch_target.dispatch, self.identifier).remove(self)
 
-    def _listen_dispatch(self, listen_with, *args, **kw):
-        listen_with._listen(
-                    self,
-                    *args,
-                    **kw
-                )
-
-    def _listen(self, propagate=False, insert=False,
+    def base_listen(self, propagate=False, insert=False,
                             named=False):
+
         target, identifier, fn = \
             self.dispatch_target, self.identifier, self.fn
 
