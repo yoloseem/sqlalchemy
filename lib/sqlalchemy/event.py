@@ -40,8 +40,9 @@ def listen(target, identifier, fn, *args, **kw):
         tgt = evt_cls._accept_with(target)
         if tgt is not None:
             _EventKey(target, identifier, fn, tgt).listen(*args, **kw)
-            return
-    raise exc.InvalidRequestError("No such event '%s' for target '%s'" %
+            break
+    else:
+        raise exc.InvalidRequestError("No such event '%s' for target '%s'" %
                                 (identifier, target))
 
 
@@ -228,19 +229,11 @@ class Events(util.with_metaclass(_EventMeta, object)):
             return None
 
     @classmethod
-    def _listen(cls, event_key, propagate=False, insert=False,
+    def _listen(cls, self, propagate=False, insert=False,
                             named=False):
-        target, identifier, fn = \
-            event_key.dispatch_target, event_key.identifier, event_key.fn
-        dispatch_descriptor = getattr(target.dispatch, identifier)
-        fn = dispatch_descriptor._adjust_fn_spec(fn, named)
 
-        if insert:
-            dispatch_descriptor.\
-                    for_modify(target.dispatch).insert(fn, target, propagate)
-        else:
-            dispatch_descriptor.\
-                    for_modify(target.dispatch).append(fn, target, propagate)
+        self._listen(propagate=propagate, insert=insert, named=named)
+
 
     @classmethod
     def _remove(cls, target, identifier, fn):
@@ -421,7 +414,8 @@ class _DispatchDescriptor(object):
         return cls in self._clslevel and \
             evt in self._clslevel[cls]
 
-    def insert(self, obj, target, propagate):
+    def insert(self, event_key, propagate):
+        obj, target = event_key.fn, event_key.dispatch_target
         assert isinstance(target, type), \
                 "Class-level Event targets must be classes."
         stack = [target]
@@ -435,7 +429,8 @@ class _DispatchDescriptor(object):
                     self._clslevel[cls] = []
                 self._clslevel[cls].insert(0, obj)
 
-    def append(self, obj, target, propagate):
+    def append(self, event_key, propagate):
+        obj, target = event_key.fn, event_key.dispatch_target
         assert isinstance(target, type), \
                 "Class-level Event targets must be classes."
 
@@ -463,6 +458,7 @@ class _DispatchDescriptor(object):
                 ])
 
     def remove(self, obj, target):
+        #obj, target = event_key.fn, event_key.dispatch_target
         stack = [target]
         while stack:
             cls = stack.pop(0)
@@ -637,19 +633,22 @@ class _ListenerCollection(_CompoundListener):
                                 and not only_propagate or l in self.propagate
                                 ])
 
-    def insert(self, obj, target, propagate):
+    def insert(self, event_key, propagate):
+        obj, target = event_key.fn, event_key.dispatch_target
         if obj not in self.listeners:
             self.listeners.insert(0, obj)
             if propagate:
                 self.propagate.add(obj)
 
-    def append(self, obj, target, propagate):
+    def append(self, event_key, propagate):
+        obj, target = event_key.fn, event_key.dispatch_target
         if obj not in self.listeners:
             self.listeners.append(obj)
             if propagate:
                 self.propagate.add(obj)
 
     def remove(self, obj, target):
+        #obj, target = event_key.fn, event_key.dispatch_target
         if obj in self.listeners:
             self.listeners.remove(obj)
             self.propagate.discard(obj)
@@ -706,14 +705,14 @@ class _JoinedListener(_CompoundListener):
         self.local = self.parent_listeners = self.local.for_modify(obj)
         return self
 
-    def insert(self, obj, target, propagate):
-        self.local.insert(obj, target, propagate)
+    def insert(self, event_key, propagate):
+        self.local.insert(event_key, propagate)
 
-    def append(self, obj, target, propagate):
-        self.local.append(obj, target, propagate)
+    def append(self, event_key, propagate):
+        self.local.append(event_key, propagate)
 
-    def remove(self, obj, target):
-        self.local.remove(obj, target)
+    def remove(self, event_key):
+        self.local.remove(event_key)
 
     def clear(self):
         raise NotImplementedError()
@@ -755,7 +754,10 @@ class _EventKey(object):
         self.dispatch_target = dispatch_target
 
     def with_wrapper(self, fn_wrap):
-        return _EventKey(
+        if fn_wrap is self.fn:
+            return self
+        else:
+            return _EventKey(
                 self.target,
                 self.identifier,
                 fn_wrap,
@@ -763,7 +765,10 @@ class _EventKey(object):
                 )
 
     def with_dispatch_target(self, dispatch_target):
-        return _EventKey(
+        if dispatch_target is self.dispatch_target:
+            return self
+        else:
+            return _EventKey(
                 self.target,
                 self.identifier,
                 self.fn,
@@ -782,6 +787,25 @@ class _EventKey(object):
                     *args,
                     **kw
                 )
+
+    def _listen(self, propagate=False, insert=False,
+                            named=False):
+        target, identifier, fn = \
+            self.dispatch_target, self.identifier, self.fn
+
+        dispatch_descriptor = getattr(target.dispatch, identifier)
+
+        fn = dispatch_descriptor._adjust_fn_spec(fn, named)
+        self = self.with_wrapper(fn)
+
+        if insert:
+            dispatch_descriptor.\
+                    for_modify(target.dispatch).insert(self, propagate)
+        else:
+            # event_key.fn, event_key.dispatch_target
+            # fn, target
+            dispatch_descriptor.\
+                    for_modify(target.dispatch).append(self, propagate)
 
     def append_list(self, list_, value):
         list_.append(value)
