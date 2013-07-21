@@ -11,6 +11,7 @@ from __future__ import absolute_import
 from . import util, exc
 from itertools import chain
 import weakref
+import collections
 
 CANCEL = util.symbol('CANCEL')
 NO_RETVAL = util.symbol('NO_RETVAL')
@@ -722,6 +723,11 @@ class dispatcher(object):
         return disp
 
 
+class _EventToken(object):
+    pass
+
+
+
 class _EventKey(object):
     """Represents the arguments passed to :func:`.listen` and
     provides managed registration services on behalf of those arguments.
@@ -732,11 +738,24 @@ class _EventKey(object):
     an equivalent :class:`._EventKey`.
 
     """
-    def __init__(self, target, identifier, fn, dispatch_target):
+
+    _registry = weakref.WeakKeyDictionary()
+
+    def __init__(self, target, identifier, fn, dispatch_target, _dispatch_reg=None):
         self.target = target
         self.identifier = identifier
         self.fn = fn
-        self.dispatch_target = dispatch_target
+
+        if not _dispatch_reg:
+            if target not in _EventKey._registry:
+                reg = _EventKey._registry[target] = collections.defaultdict(collections.defaultdict(dict))
+            else:
+                reg = _EventKey._registry[target]
+
+            self.dispatch_reg = reg[identifier]
+        else:
+            self.dispatch_reg = _dispatch_reg
+
 
     def with_wrapper(self, fn_wrap):
         if fn_wrap is self.fn:
@@ -746,7 +765,8 @@ class _EventKey(object):
                 self.target,
                 self.identifier,
                 fn_wrap,
-                self.dispatch_target
+                self.dispatch_target,
+                _dispatch_reg=self.dispatch_reg
                 )
 
     def with_dispatch_target(self, dispatch_target):
@@ -757,7 +777,8 @@ class _EventKey(object):
                 self.target,
                 self.identifier,
                 self.fn,
-                dispatch_target
+                dispatch_target,
+                _dispatch_reg=self.dispatch_reg
                 )
 
     def listen(self, *args, **kw):
@@ -783,6 +804,10 @@ class _EventKey(object):
         else:
             dispatch_descriptor.\
                     for_modify(target.dispatch).append(self, propagate)
+
+    def _link_to_list(self, list_):
+        # not sure yet, need to remove .fn when all list_ goes away
+        self.dispatch_reg[self.fn][self.dispatch_target] = list_
 
     def append_value_to_list(self, list_, value):
         list_.append(value)
