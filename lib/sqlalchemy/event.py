@@ -739,33 +739,32 @@ class _EventKey(object):
 
     """
 
-    _registry = weakref.WeakKeyDictionary()
-
-    def __init__(self, target, identifier, fn, dispatch_target, _dispatch_reg=None):
+    def __init__(self, target, identifier, fn, dispatch_target,
+                                _fn_wrap=None, _dispatch_reg=None):
         self.target = target
         self.identifier = identifier
         self.fn = fn
+        self.fn_wrap = _fn_wrap
 
+        if _fn_wrap is not None:
+            _fn_wrap._wraps = fn
+
+        self.dispatch_target = dispatch_target
         if not _dispatch_reg:
-            if target not in _EventKey._registry:
-                reg = _EventKey._registry[target] = collections.defaultdict(collections.defaultdict(dict))
-            else:
-                reg = _EventKey._registry[target]
-
-            self.dispatch_reg = reg[identifier]
+            self.dispatch_reg = {}
         else:
             self.dispatch_reg = _dispatch_reg
 
-
     def with_wrapper(self, fn_wrap):
-        if fn_wrap is self.fn:
+        if fn_wrap is self._listen_fn:
             return self
         else:
             return _EventKey(
                 self.target,
                 self.identifier,
-                fn_wrap,
+                self.fn,
                 self.dispatch_target,
+                _fn_wrap=fn_wrap,
                 _dispatch_reg=self.dispatch_reg
                 )
 
@@ -778,6 +777,7 @@ class _EventKey(object):
                 self.identifier,
                 self.fn,
                 dispatch_target,
+                _fn_wrap=self.fn_wrap,
                 _dispatch_reg=self.dispatch_reg
                 )
 
@@ -791,7 +791,7 @@ class _EventKey(object):
                             named=False):
 
         target, identifier, fn = \
-            self.dispatch_target, self.identifier, self.fn
+            self.dispatch_target, self.identifier, self._listen_fn
 
         dispatch_descriptor = getattr(target.dispatch, identifier)
 
@@ -805,47 +805,47 @@ class _EventKey(object):
             dispatch_descriptor.\
                     for_modify(target.dispatch).append(self, propagate)
 
-    def _link_to_list(self, list_):
-        # not sure yet, need to remove .fn when all list_ goes away
-        self.dispatch_reg[self.fn][self.dispatch_target] = list_
+    @property
+    def _listen_fn(self):
+        return self.fn_wrap or self.fn
 
     def append_value_to_list(self, list_, value):
         list_.append(value)
 
     def append_to_list(self, list_):
-        list_.append(self.fn)
+        list_.append(self._listen_fn)
 
     def remove_from_list(self, list_):
-        list_.remove(self.fn)
+        list_.remove(self._listen_fn)
 
     def prepend_to_list(self, list_):
-        list_.insert(0, self.fn)
+        list_.insert(0, self._listen_fn)
 
     def conditional_prepend(self, list_):
-        if self.fn not in list_:
-            list_.insert(0, self.fn)
+        if self._listen_fn not in list_:
+            list_.insert(0, self._listen_fn)
             return True
         else:
             return False
 
     def conditional_append(self, list_):
         if self.fn not in list_:
-            list_.append(self.fn)
+            list_.append(self._listen_fn)
             return True
         else:
             return False
 
     def discard_from_list(self, list_):
-        value = self.fn
+        value = self._listen_fn
         if value in list_:
             list_.remove(value)
 
     def discard_from_set(self, set_):
-        value = self.fn
+        value = self._listen_fn
         set_.discard(value)
 
     def add_to_set(self, set_):
-        value = self.fn
+        value = self._listen_fn
         set_.add(value)
 
     @classmethod
@@ -867,12 +867,4 @@ class _EventKey(object):
     @classmethod
     def clear_set(cls, set_):
         set_.clear()
-
-class _Registry(object):
-    """Tracks all listener functions and the collections they are a part
-    of, for removal purposes.
-    """
-
-
-
 
