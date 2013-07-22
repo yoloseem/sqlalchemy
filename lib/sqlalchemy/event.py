@@ -156,6 +156,8 @@ class _Dispatch(object):
             object."""
 
         for ls in _event_descriptors(other):
+            if isinstance(ls, _EmptyListener):
+                continue
             getattr(self, ls.name).\
                 for_modify(self)._update(ls, only_propagate=only_propagate)
 
@@ -412,7 +414,8 @@ class _DispatchDescriptor(object):
             else:
                 if cls not in self._clslevel:
                     self._clslevel[cls] = []
-                event_key.prepend_to_list(self, self._clslevel[cls])
+                self._clslevel[cls].insert(0, event_key._listen_fn)
+        event_key._stored_in_collection(self)
 
     def append(self, event_key, propagate):
         target = event_key.dispatch_target
@@ -428,7 +431,8 @@ class _DispatchDescriptor(object):
             else:
                 if cls not in self._clslevel:
                     self._clslevel[cls] = []
-                event_key.append_to_list(self, self._clslevel[cls])
+                self._clslevel[cls].append(event_key._listen_fn)
+        event_key._stored_in_collection(self)
 
     def update_subclass(self, target):
         if target not in self._clslevel:
@@ -436,9 +440,7 @@ class _DispatchDescriptor(object):
         clslevel = self._clslevel[target]
         for cls in target.__mro__[1:]:
             if cls in self._clslevel:
-                _EventKey.extend_list(
-                    self,
-                    clslevel, [
+                clslevel.extend([
                     fn for fn
                     in self._clslevel[cls]
                     if fn not in clslevel
@@ -451,7 +453,8 @@ class _DispatchDescriptor(object):
             cls = stack.pop(0)
             stack.extend(cls.__subrclasses__())
             if cls in self._clslevel:
-                event_key.remove_from_list(self, self._clslevel[cls])
+                self._clslevel[cls].remove(event_key.fn)
+        event_key._removed_from_collection(self)
 
     def clear(self):
         """Clear all class level listeners"""
@@ -605,28 +608,30 @@ class _ListenerCollection(_CompoundListener):
 
         existing_listeners = self.listeners
         existing_listener_set = set(existing_listeners)
-        _EventKey.update_set(self, self.propagate, other.propagate)
-        _EventKey.extend_list(
-            self,
-            existing_listeners,
-            [l for l
+        self.propagate.update(other.propagate)
+        other_listeners = [l for l
                 in other.listeners
                 if l not in existing_listener_set
                 and not only_propagate or l in self.propagate
                 ]
-        )
+
+        existing_listeners.extend(other_listeners)
+
+        to_associate = other.propagate.union(other_listeners)
+        _EventKey._stored_in_collection_multi(self, other, to_associate)
 
     def insert(self, event_key, propagate):
         if event_key.conditional_prepend(self, self.listeners) and propagate:
-            event_key.add_to_set(self, self.propagate)
+            self.propagate.add(event_key._listen_fn)
 
     def append(self, event_key, propagate):
         if event_key.conditional_append(self, self.listeners) and propagate:
-            event_key.add_to_set(self, self.propagate)
+            self.propagate.add(event_key._listen_fn)
 
     def remove(self, event_key):
-        event_key.discard_from_list(self, self.listeners)
-        event_key.discard_from_set(self, self.propagate)
+        self.listeners.remove(event_key._listen_fn)
+        self.propagate.discard(event_key._listen_fn)
+        event_key._removed_from_collection(self)
 
     def clear(self):
         _EventKey.clear_list(self, self.listeners)
@@ -730,8 +735,8 @@ class _EventKey(object):
 
     """
 
-    _registry = collections.defaultdict(weakref.WeakKeyDictionary)
-    #_wrappers_to_keys = weakref.WeakKeyDictionary()
+    _key_to_collection = collections.defaultdict(weakref.WeakKeyDictionary)
+    _collection_to_key = weakref.WeakKeyDictionary()
 
     def __init__(self, target, identifier, fn, dispatch_target,
                                 _fn_wrap=None, _dispatch_reg=None):
@@ -739,37 +744,92 @@ class _EventKey(object):
         self.identifier = identifier
         self.fn = fn
         self.fn_wrap = _fn_wrap
-
-        target_ref = id(target)
-
-
-        #if _fn_wrap is not None:
-        #    if _fn_wrap in _EventKey._wrappers_to_keys:
-        #        assert _EventKey._wrappers_to_keys[_fn_wrap] == (target_ref, identifier, fn)
-        #    else:
-        #        _EventKey._wrappers_to_keys[_fn_wrap] = (target_ref, identifier, fn)
-
         self.dispatch_target = dispatch_target
-        if not _dispatch_reg:
-            self.dispatch_reg = _EventKey._registry[(target_ref, identifier, fn)]
+
+        self._dispatch_reg = None
+
+        """
+        lookup #1:
+
+        given: ListenerCollection/_DispatchDescriptor, function contained
+        locates: target/identifier/fn key used to establish the relationship
+        used by:  when one ListenerCollection/_DispatchDescriptor copies its functions
+                  over to another, the fns that were set up with it also need to be
+                  set up with the new one for removal
+
+        lookup #2:
+
+        given: target/identifier/fn
+        locates: all ListenerCollection/_DistpatchDescriptors along with the ultimate
+                 fn/wrapped fn stored in that collection, *or* some way to remove
+                 the item  (which would have to point to the item anyway)
+        used by: the remove feature
+
+        (target, identifier, fn) -> {
+                                            listenercollection -> listener_fn
+                                            listenercollection -> listener_fn
+                                            listenercollection -> listener_fn
+                                        }
+
+        listener_fn -> {
+                            listenercollection   -> (target, identifier, fn)
+                            listenercollection   -> (target, identifier, fn)
+                            listenercollection   -> (target, identifier, fn)
+                        }
+
+        {
+            ref(listenercollection) ->
+        }
+
+        """
+
+    @classmethod
+    def _stored_in_collection_multi(cls, newowner, oldowner, elements):
+        if not elements:
+            return
+
+        old_listener_to_key = cls._collection_to_key[oldowner]
+
+        if newowner in cls._collection_to_key:
+            new_listener_to_key = cls._collection_to_key[newowner]
         else:
-            self.dispatch_reg = _dispatch_reg
+            new_listener_to_key = cls._collection_to_key[newowner] = {}
+
+        for listen_fn in elements:
+            key = old_listener_to_key[listen_fn]
+            dispatch_reg = cls._key_to_collection[key]
+            if newowner in dispatch_reg:
+                assert dispatch_reg[newowner] is listen_fn
+            else:
+                dispatch_reg[newowner] = listen_fn
+
+            new_listener_to_key[listen_fn] = key
 
     def _stored_in_collection(self, owner):
-        if owner in self.dispatch_reg:
-            owner_to_keys = self.dispatch_reg[owner]
+        key = (id(self.target), self.identifier, self.fn)
+        dispatch_reg = self._key_to_collection[key]
+        if owner in dispatch_reg:
+            assert dispatch_reg[owner] is self._listen_fn
         else:
-            owner_to_keys = self.dispatch_reg[owner] = set()
-        owner_to_keys.add(self._listen_fn)
+            dispatch_reg[owner] = self._listen_fn
+
+        if owner in self._collection_to_key:
+            listener_to_key = self._collection_to_key[owner]
+        else:
+            listener_to_key = self._collection_to_key[owner] = {}
+
+        listener_to_key[self._listen_fn] = key
 
     def _removed_from_collection(self, owner):
-        if owner in self.dispatch_reg:
-            owner_to_keys = self.dispatch_reg[owner]
-            owner_to_keys.discard(self._listen_fn)
-            if not owner_to_keys:
-                del self.dispatch_reg[owner]
-                if not self.dispatch_reg:
-                    del _EventKey._registry[(id(self.target), self.identifier, self.fn)]
+        key = (id(self.target), self.identifier, self.fn)
+
+        dispatch_reg = self._key_to_collection[key]
+
+        dispatch_reg.pop(owner, None)
+
+        if owner in self._collection_to_key:
+            listener_to_key = self._collection_to_key[owner]
+            listener_to_key.pop(self._listen_fn)
 
     def with_wrapper(self, fn_wrap):
         if fn_wrap is self._listen_fn:
@@ -781,7 +841,7 @@ class _EventKey(object):
                 self.fn,
                 self.dispatch_target,
                 _fn_wrap=fn_wrap,
-                _dispatch_reg=self.dispatch_reg
+                #_dispatch_reg=self.dispatch_reg
                 )
 
     def with_dispatch_target(self, dispatch_target):
@@ -794,7 +854,7 @@ class _EventKey(object):
                 self.fn,
                 dispatch_target,
                 _fn_wrap=self.fn_wrap,
-                _dispatch_reg=self.dispatch_reg
+                #_dispatch_reg=self.dispatch_reg
                 )
 
     def listen(self, *args, **kw):
@@ -854,37 +914,6 @@ class _EventKey(object):
             return True
         else:
             return False
-
-    def discard_from_list(self, owner, list_):
-        self._removed_from_collection(owner)
-        value = self._listen_fn
-        if value in list_:
-            list_.remove(value)
-
-    def discard_from_set(self, owner, set_):
-        value = self._listen_fn
-        set_.discard(value)
-
-    def add_to_set(self, owner, set_):
-        value = self._listen_fn
-        set_.add(value)
-
-    @classmethod
-    def update_set(cls, owner, destination, source):
-        destination.update(source)
-
-    @classmethod
-    def extend_list(cls, owner, list_, extend):
-        #for fn_wrap in extend:
-        #    (target_ref, identifier, fn) = cls._wrappers_to_keys[fn_wrap]
-        #    dispatch_reg = cls._registry[(target_ref, identifier, fn)]
-        #    if owner in dispatch_reg:
-        #        owner_to_keys = dispatch_reg[owner]
-        #    else:
-        #        owner_to_keys = dispatch_reg[owner] = set()
-        #   owner_to_keys.add(fn_wrap)
-
-        list_.extend(extend)
 
     @classmethod
     def clear_list(cls, owner, list_):
