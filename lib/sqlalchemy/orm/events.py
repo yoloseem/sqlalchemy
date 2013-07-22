@@ -356,7 +356,7 @@ class _EventsHold(object):
             else:
                 collection = target.all_holds[target.class_] = []
 
-            event_key.append_value_to_list(collection, (event_key, raw, propagate))
+            event_key.append_value_to_list(target, collection, (event_key, raw, propagate))
 
             if propagate:
                 stack = list(target.class_.__subclasses__())
