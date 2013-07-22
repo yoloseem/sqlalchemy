@@ -6,7 +6,7 @@ from sqlalchemy import event, exc
 from sqlalchemy.testing import fixtures
 from sqlalchemy.testing.util import gc_collect
 from sqlalchemy.testing.mock import Mock, call
-
+from sqlalchemy import testing
 
 class EventsTest(fixtures.TestBase):
     """Test class- and instance-level event registration."""
@@ -918,3 +918,114 @@ class JoinTest(fixtures.TestBase):
             l1.mock_calls,
             [call(element, 1), call(element, 2), call(element, 3)]
         )
+
+class RemovalTest(fixtures.TestBase):
+    def _fixture(self):
+        class TargetEvents(event.Events):
+            def event_one(self, x, y):
+                pass
+
+            def event_two(self, x):
+                pass
+
+            def event_three(self, x):
+                pass
+
+        class Target(object):
+            dispatch = event.dispatcher(TargetEvents)
+        return Target
+
+    def test_clslevel(self):
+        Target = self._fixture()
+
+        m1 = Mock()
+
+        event.listen(Target, "event_two", m1)
+
+        t1 = Target()
+        t1.dispatch.event_two("x")
+
+        event.remove(Target, "event_two", m1)
+
+        t1.dispatch.event_two("y")
+
+        eq_(m1.mock_calls, [call("x")])
+
+    def test_clslevel_subclass(self):
+        Target = self._fixture()
+        class SubTarget(Target):
+            pass
+
+        m1 = Mock()
+
+        event.listen(Target, "event_two", m1)
+
+        t1 = SubTarget()
+        t1.dispatch.event_two("x")
+
+        event.remove(Target, "event_two", m1)
+
+        t1.dispatch.event_two("y")
+
+        eq_(m1.mock_calls, [call("x")])
+
+    def test_propagate(self):
+        Target = self._fixture()
+
+        m1 = Mock()
+
+        t1 = Target()
+        t2 = Target()
+
+        event.listen(t1, "event_one", m1, propagate=True)
+        event.listen(t1, "event_two", m1, propagate=False)
+
+        t2.dispatch._update(t1.dispatch)
+
+        t1.dispatch.event_one("t1e1x")
+        t1.dispatch.event_two("t1e2x")
+        t2.dispatch.event_one("t2e1x")
+        t2.dispatch.event_two("t2e2x")
+
+        event.remove(t1, "event_one", m1)
+        event.remove(t1, "event_two", m1)
+
+        t1.dispatch.event_one("t1e1y")
+        t1.dispatch.event_two("t1e2y")
+        t2.dispatch.event_one("t2e1y")
+        t2.dispatch.event_two("t2e2y")
+
+        eq_(m1.mock_calls,
+                [call('t1e1x'), call('t1e2x'),
+                call('t2e1x')])
+
+    @testing.requires.predictable_gc
+    def test_listener_collection_removed_cleanup(self):
+        from sqlalchemy.event import _EventKey
+
+        Target = self._fixture()
+
+        m1 = Mock()
+
+        t1 = Target()
+
+        event.listen(t1, "event_one", m1)
+
+        key = (id(t1), "event_one", m1)
+
+        assert key in _EventKey._key_to_collection
+        collection_ref = _EventKey._key_to_collection[key].keys()[0]
+        assert collection_ref in _EventKey._collection_to_key
+
+        t1.dispatch.event_one("t1")
+
+        del t1
+
+        gc_collect()
+
+        assert key not in _EventKey._key_to_collection
+        assert collection_ref not in _EventKey._collection_to_key
+
+
+
+
