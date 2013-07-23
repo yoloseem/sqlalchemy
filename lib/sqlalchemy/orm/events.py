@@ -46,7 +46,6 @@ class InstrumentationEvents(event.Events):
 
     @classmethod
     def _accept_with(cls, target):
-        # TODO: there's no coverage for this
         if isinstance(target, type):
             return _InstrumentationEventsHold(target)
         else:

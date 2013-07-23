@@ -38,12 +38,13 @@ ref(listenercollection) -> {
 """
 
 def _collection_gced(ref):
-    try:
-        listener_to_key = _collection_to_key.pop(ref)
-    except KeyError:
-        pass
-    else:
-        for key in listener_to_key.values():
+    # defaultdict, so can't get a KeyError
+    if ref not in _collection_to_key:
+        return
+    listener_to_key = _collection_to_key.pop(ref)
+    for key in listener_to_key.values():
+        if key in _key_to_collection:
+            # defaultdict, so can't get a KeyError
             dispatch_reg = _key_to_collection[key]
             dispatch_reg.pop(ref)
             if not dispatch_reg:

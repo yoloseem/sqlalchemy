@@ -26,7 +26,6 @@ class B(fixtures.ComparableEntity):
 class ASub(A):
     pass
 
-from sqlalchemy.event import _EventKey
 def profile_memory(times=50):
     def decorate(func):
         # run the test 50 times.  if length of gc.get_objects()
@@ -48,11 +47,6 @@ def profile_memory(times=50):
                 gc_collect()
                 samples[x] = len(get_objects_skipping_sqlite_issue())
 
-                l = len(_EventKey._key_to_collection)
-                print("event size:", l)
-                if l > 30:
-                    import pdb
-                    pdb.set_trace()
 
             print("sample gc sizes:", samples)
 
