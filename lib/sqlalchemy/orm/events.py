@@ -65,7 +65,7 @@ class InstrumentationEvents(event.Events):
                 return fn(target_cls, *arg)
 
         def remove(ref):
-            key = event._EventKey(None, identifier, listen,
+            key = event.registry._EventKey(None, identifier, listen,
                         orm.instrumentation._instrumentation_factory)
             getattr(orm.instrumentation._instrumentation_factory.dispatch,
                         identifier).remove(key)

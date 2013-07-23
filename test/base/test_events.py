@@ -12,9 +12,6 @@ class EventsTest(fixtures.TestBase):
     """Test class- and instance-level event registration."""
 
     def setUp(self):
-        assert 'event_one' not in event._registrars
-        assert 'event_two' not in event._registrars
-
         class TargetEvents(event.Events):
             def event_one(self, x, y):
                 pass
@@ -30,7 +27,7 @@ class EventsTest(fixtures.TestBase):
         self.Target = Target
 
     def tearDown(self):
-        event._remove_dispatcher(self.Target.__dict__['dispatch'].events)
+        event.base._remove_dispatcher(self.Target.__dict__['dispatch'].events)
 
     def test_register_class(self):
         def listen(x, y):
@@ -209,7 +206,7 @@ class NamedCallTest(fixtures.TestBase):
         self.TargetOne = TargetOne
 
     def tearDown(self):
-        event._remove_dispatcher(self.TargetOne.__dict__['dispatch'].events)
+        event.base._remove_dispatcher(self.TargetOne.__dict__['dispatch'].events)
 
 
     def test_kw_accept(self):
@@ -281,7 +278,7 @@ class LegacySignatureTest(fixtures.TestBase):
         self.TargetOne = TargetOne
 
     def tearDown(self):
-        event._remove_dispatcher(self.TargetOne.__dict__['dispatch'].events)
+        event.base._remove_dispatcher(self.TargetOne.__dict__['dispatch'].events)
 
     def test_legacy_accept(self):
         canary = Mock()
@@ -395,7 +392,7 @@ class ClsLevelListenTest(fixtures.TestBase):
 
 
     def tearDown(self):
-        event._remove_dispatcher(self.TargetOne.__dict__['dispatch'].events)
+        event.base._remove_dispatcher(self.TargetOne.__dict__['dispatch'].events)
 
     def setUp(self):
         class TargetEventsOne(event.Events):
@@ -406,7 +403,7 @@ class ClsLevelListenTest(fixtures.TestBase):
         self.TargetOne = TargetOne
 
     def tearDown(self):
-        event._remove_dispatcher(
+        event.base._remove_dispatcher(
             self.TargetOne.__dict__['dispatch'].events)
 
     def test_lis_subcalss_lis(self):
@@ -493,8 +490,8 @@ class AcceptTargetsTest(fixtures.TestBase):
         self.TargetTwo = TargetTwo
 
     def tearDown(self):
-        event._remove_dispatcher(self.TargetOne.__dict__['dispatch'].events)
-        event._remove_dispatcher(self.TargetTwo.__dict__['dispatch'].events)
+        event.base._remove_dispatcher(self.TargetOne.__dict__['dispatch'].events)
+        event.base._remove_dispatcher(self.TargetTwo.__dict__['dispatch'].events)
 
     def test_target_accept(self):
         """Test that events of the same name are routed to the correct
@@ -563,7 +560,7 @@ class CustomTargetsTest(fixtures.TestBase):
         self.Target = Target
 
     def tearDown(self):
-        event._remove_dispatcher(self.Target.__dict__['dispatch'].events)
+        event.base._remove_dispatcher(self.Target.__dict__['dispatch'].events)
 
     def test_indirect(self):
         def listen(x, y):
@@ -630,7 +627,7 @@ class ListenOverrideTest(fixtures.TestBase):
         self.Target = Target
 
     def tearDown(self):
-        event._remove_dispatcher(self.Target.__dict__['dispatch'].events)
+        event.base._remove_dispatcher(self.Target.__dict__['dispatch'].events)
 
     def test_listen_override(self):
         listen_one = Mock()
@@ -720,7 +717,7 @@ class JoinTest(fixtures.TestBase):
         for cls in (self.TargetElement,
                 self.TargetFactory, self.BaseTarget):
             if 'dispatch' in cls.__dict__:
-                event._remove_dispatcher(cls.__dict__['dispatch'].events)
+                event.base._remove_dispatcher(cls.__dict__['dispatch'].events)
 
     def test_neither(self):
         element = self.TargetFactory().create()
@@ -1001,7 +998,7 @@ class RemovalTest(fixtures.TestBase):
 
     @testing.requires.predictable_gc
     def test_listener_collection_removed_cleanup(self):
-        from sqlalchemy.event import _EventKey
+        from sqlalchemy.event import registry
 
         Target = self._fixture()
 
@@ -1013,9 +1010,9 @@ class RemovalTest(fixtures.TestBase):
 
         key = (id(t1), "event_one", id(m1))
 
-        assert key in _EventKey._key_to_collection
-        collection_ref = _EventKey._key_to_collection[key].keys()[0]
-        assert collection_ref in _EventKey._collection_to_key
+        assert key in registry._key_to_collection
+        collection_ref = registry._key_to_collection[key].keys()[0]
+        assert collection_ref in registry._collection_to_key
 
         t1.dispatch.event_one("t1")
 
@@ -1023,8 +1020,8 @@ class RemovalTest(fixtures.TestBase):
 
         gc_collect()
 
-        assert key not in _EventKey._key_to_collection
-        assert collection_ref not in _EventKey._collection_to_key
+        assert key not in registry._key_to_collection
+        assert collection_ref not in registry._collection_to_key
 
 
 
