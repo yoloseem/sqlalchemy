@@ -238,8 +238,12 @@ class Events(util.with_metaclass(_EventMeta, object)):
     def _clear(cls):
         cls.dispatch._clear()
 
+class RefCollection(object):
+    @util.memoized_property
+    def ref(self):
+        return weakref.ref(self, _EventKey._collection_gced)
 
-class _DispatchDescriptor(object):
+class _DispatchDescriptor(RefCollection):
     """Class-level attributes on :class:`._Dispatch` classes."""
 
     def __init__(self, parent_dispatch_cls, fn):
@@ -581,7 +585,7 @@ class _CompoundListener(_HasParentDispatchDescriptor):
 
     __nonzero__ = __bool__
 
-class _ListenerCollection(_CompoundListener):
+class _ListenerCollection(RefCollection, _CompoundListener):
     """Instance-level attributes on instances of :class:`._Dispatch`.
 
     Represents a collection of listeners.
@@ -679,17 +683,6 @@ class _JoinedListener(_CompoundListener):
         self.local = local
         self.parent_listeners = self.local
 
-        # fix .listeners for the parent.  This means
-        # new events added to the parent won't be picked
-        # up here, and also means listener functions are
-        # copied to a new list.
-        #self.listeners = _EventKey.copy_list(getattr(self.parent, self.name))
-
-    # Alternatively, the listeners can
-    # be via @property to just return getattr(self.parent, self.name)
-    # each time.  this is possibly less performant than having the list
-    # set up ahead of time, however it remains to be seen how expensive
-    # copy_list() is going to be.
     @property
     def listeners(self):
         return getattr(self.parent, self.name)
@@ -749,9 +742,9 @@ class _EventKey(object):
     listener collections and the listener fn contained
 
     (target, identifier, fn) -> {
-                                ref(listenercollection) -> listener_fn
-                                ref(listenercollection) -> listener_fn
-                                ref(listenercollection) -> listener_fn
+                                ref(listenercollection) -> ref(listener_fn)
+                                ref(listenercollection) -> ref(listener_fn)
+                                ref(listenercollection) -> ref(listener_fn)
                             }
     """
 
@@ -761,19 +754,22 @@ class _EventKey(object):
     all the original listen() arguments and the listener fn contained
 
     ref(listenercollection) -> {
-                                listener_fn -> (target, identifier, fn),
-                                listener_fn -> (target, identifier, fn),
-                                listener_fn -> (target, identifier, fn),
+                                ref(listener_fn) -> (target, identifier, fn),
+                                ref(listener_fn) -> (target, identifier, fn),
+                                ref(listener_fn) -> (target, identifier, fn),
                             }
     """
 
-    def __init__(self, target, identifier, fn, dispatch_target,
-                                _fn_wrap=None):
+    def __init__(self, target, identifier, fn, dispatch_target, _fn_wrap=None):
         self.target = target
         self.identifier = identifier
         self.fn = fn
         self.fn_wrap = _fn_wrap
         self.dispatch_target = dispatch_target
+
+    @property
+    def _key(self):
+        return (id(self.target), self.identifier, id(self.fn))
 
     @classmethod
     def _collection_gced(cls, ref):
@@ -784,81 +780,77 @@ class _EventKey(object):
         else:
             for key in listener_to_key.values():
                 dispatch_reg = cls._key_to_collection[key]
-                dispatch_reg.pop(ref, None)
+                dispatch_reg.pop(ref)
                 if not dispatch_reg:
                     cls._key_to_collection.pop(key)
 
     def _stored_in_collection(self, owner):
-        key = (id(self.target), self.identifier, self.fn)
+        key = self._key
 
         dispatch_reg = self._key_to_collection[key]
 
-        ref = weakref.ref(owner, _EventKey._collection_gced)
+        owner_ref = owner.ref
+        listen_ref = weakref.ref(self._listen_fn)
 
-        if ref in dispatch_reg:
-            assert dispatch_reg[ref] is self._listen_fn
+        if owner_ref in dispatch_reg:
+            assert dispatch_reg[owner_ref] == listen_ref
         else:
-            dispatch_reg[ref] = self._listen_fn
+            dispatch_reg[owner_ref] = listen_ref
 
-        listener_to_key = self._collection_to_key[ref]
-        listener_to_key[self._listen_fn] = key
+        listener_to_key = self._collection_to_key[owner_ref]
+        listener_to_key[listen_ref] = key
 
     def _removed_from_collection(self, owner):
-        key = (id(self.target), self.identifier, self.fn)
+        key = self._key
 
         dispatch_reg = self._key_to_collection[key]
 
-        ref = weakref.ref(owner, _EventKey._collection_gced)
-        dispatch_reg.pop(ref, None)
+        listen_ref = weakref.ref(self._listen_fn)
+
+        owner_ref = owner.ref
+        dispatch_reg.pop(owner_ref, None)
         if not dispatch_reg:
             del self._key_to_collection[key]
 
-        if ref in self._collection_to_key:
-            listener_to_key = self._collection_to_key[ref]
-            listener_to_key.pop(self._listen_fn)
+        if owner_ref in self._collection_to_key:
+            listener_to_key = self._collection_to_key[owner_ref]
+            listener_to_key.pop(listen_ref)
 
     @classmethod
     def _stored_in_collection_multi(cls, newowner, oldowner, elements):
         if not elements:
             return
 
-        oldowner = weakref.ref(oldowner, _EventKey._collection_gced)
-        newowner = weakref.ref(newowner, _EventKey._collection_gced)
+        oldowner = oldowner.ref
+        newowner = newowner.ref
 
         old_listener_to_key = cls._collection_to_key[oldowner]
-        if newowner in cls._collection_to_key:
-            new_listener_to_key = cls._collection_to_key[newowner]
-        else:
-            new_listener_to_key = cls._collection_to_key[newowner] = {}
+        new_listener_to_key = cls._collection_to_key[newowner]
 
         for listen_fn in elements:
-            try:
-                key = old_listener_to_key[listen_fn]
-            except KeyError:
-                util.warn(
-                        "event registry may be corrupted; listener "
-                        "function %s not present during listener copy" %
-                        listen_fn)
-                continue
+            listen_ref = weakref.ref(listen_fn)
+            key = old_listener_to_key[listen_ref]
             dispatch_reg = cls._key_to_collection[key]
             if newowner in dispatch_reg:
-                assert dispatch_reg[newowner] is listen_fn
+                assert dispatch_reg[newowner] == listen_ref
             else:
-                dispatch_reg[newowner] = listen_fn
+                dispatch_reg[newowner] = listen_ref
 
-            new_listener_to_key[listen_fn] = key
+            new_listener_to_key[listen_ref] = key
 
     @classmethod
     def _clear(cls, owner, elements):
         if not elements:
             return
 
-        owner = weakref.ref(owner, _EventKey._collection_gced)
+        owner = owner.ref
         listener_to_key = cls._collection_to_key[owner]
         for listen_fn in elements:
-            key = listener_to_key[listen_fn]
+            listen_ref = weakref.ref(listen_fn)
+            key = listener_to_key[listen_ref]
             dispatch_reg = cls._key_to_collection[key]
             dispatch_reg.pop(owner, None)
+
             if not dispatch_reg:
                 del cls._key_to_collection[key]
 
@@ -890,11 +882,12 @@ class _EventKey(object):
         self.dispatch_target.dispatch._listen(self, *args, **kw)
 
     def remove(self):
-        key = (id(self.target), self.identifier, self.fn)
+        key = self._key
         dispatch_reg = self._key_to_collection[key]
-        for collection_ref, listener_fn in dispatch_reg.items():
+        for collection_ref, listener_ref in dispatch_reg.items():
             collection = collection_ref()
-            if collection is not None:
+            listener_fn = listener_ref()
+            if collection is not None and listener_fn is not None:
                 collection.remove(self.with_wrapper(listener_fn))
 
 

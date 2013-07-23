@@ -333,7 +333,7 @@ class InstanceEvents(event.Events):
         """
 
 
-class _EventsHold(object):
+class _EventsHold(event.RefCollection):
     """Hold onto listeners against unmapped, uninstrumented classes.
 
     Establish _listen() for that class' mapper/instrumentation when

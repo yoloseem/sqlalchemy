@@ -1011,7 +1011,7 @@ class RemovalTest(fixtures.TestBase):
 
         event.listen(t1, "event_one", m1)
 
-        key = (id(t1), "event_one", m1)
+        key = (id(t1), "event_one", id(m1))
 
         assert key in _EventKey._key_to_collection
         collection_ref = _EventKey._key_to_collection[key].keys()[0]
