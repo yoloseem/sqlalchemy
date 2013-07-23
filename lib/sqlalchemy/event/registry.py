@@ -12,6 +12,8 @@ from __future__ import absolute_import
 
 import weakref
 import collections
+from .. import exc
+
 
 _key_to_collection = collections.defaultdict(dict)
 """
@@ -165,7 +167,14 @@ class _EventKey(object):
 
     def remove(self):
         key = self._key
-        dispatch_reg = _key_to_collection[key]
+
+        if key not in _key_to_collection:
+            raise exc.InvalidRequestError(
+                    "No listeners found for event %s / %r / %s " %
+                    (self.target, self.identifier, self.fn)
+                )
+        dispatch_reg = _key_to_collection.pop(key)
+
         for collection_ref, listener_ref in dispatch_reg.items():
             collection = collection_ref()
             listener_fn = listener_ref()

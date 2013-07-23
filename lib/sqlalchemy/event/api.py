@@ -1,3 +1,6 @@
+"""Public API functions for the event system.
+
+"""
 from __future__ import absolute_import
 
 from .. import util, exc
@@ -61,6 +64,25 @@ def listens_for(target, identifier, *args, **kw):
 
 def remove(target, identifier, fn):
     """Remove an event listener.
+
+    The arguments here should match exactly those which were sent to
+    :func:`.listen`; all the event registration which proceeded as a result
+    of this call will be reverted by calling :func:`.remove` with the same
+    arguments.
+
+    e.g.::
+
+        # if a function was registered like this...
+        @event.listens_for(SomeMappedClass, "before_insert", propagate=True)
+        def my_listener_function(*arg):
+            pass
+
+        # ... it's removed like this
+        event.remove(SomeMappedClass, "before_insert", my_listener_function)
+
+    Above, the listener function associated with ``SomeMappedClass`` was also
+    propagated to subclasses of ``SomeMappedClass``; the :func:`.remove` function
+    will revert all of these operations.
 
     """
     for evt_cls in _registrars[identifier]:

@@ -1,3 +1,27 @@
+"""Attribute implementation for _Dispatch classes.
+
+The various listener targets for a particular event class are represented
+as attributes, which refer to collections of listeners to be fired off.
+These collections can exist at the class level as well as at the instance
+level.  An event is fired off using code like this::
+
+    some_object.dispatch.first_connect(arg1, arg2)
+
+Above, ``some_object.dispatch`` would be an instance of ``_Dispatch`` and
+``first_connect`` is typically an instance of ``_ListenerCollection``
+if event listeners are present, or ``_EmptyListener`` if none are present.
+
+The attribute mechanics here spend effort trying to ensure listener functions
+are available with a minimum of function call overhead, that unnecessary
+objects aren't created (i.e. many empty per-instance listener collections),
+as well as that everything is garbage collectable when owning references are
+lost.  Other features such as "propagation" of listener functions across
+many ``_Dispatch`` instances, "joining" of multiple ``_Dispatch`` instances,
+as well as support for subclass propagation (e.g. events assigned to
+``Pool`` vs. ``QueuePool``) are all implemented here.
+
+"""
+
 from __future__ import absolute_import
 
 from .. import util

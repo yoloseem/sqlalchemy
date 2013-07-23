@@ -1023,6 +1023,26 @@ class RemovalTest(fixtures.TestBase):
         assert key not in registry._key_to_collection
         assert collection_ref not in registry._collection_to_key
 
+    def test_remove_not_listened(self):
+        Target = self._fixture()
+
+        m1 = Mock()
+
+        t1 = Target()
+
+        event.listen(t1, "event_one", m1, propagate=True)
+        event.listen(t1, "event_three", m1)
+
+        event.remove(t1, "event_one", m1)
+        assert_raises_message(
+            exc.InvalidRequestError,
+            r"No listeners found for event <.*Target.*> / 'event_two' / <Mock.*> ",
+            event.remove, t1, "event_two", m1
+        )
+
+        event.remove(t1, "event_three", m1)
+
+
 
 
 
