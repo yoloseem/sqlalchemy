@@ -1011,7 +1011,7 @@ class RemovalTest(fixtures.TestBase):
         key = (id(t1), "event_one", id(m1))
 
         assert key in registry._key_to_collection
-        collection_ref = registry._key_to_collection[key].keys()[0]
+        collection_ref = list(registry._key_to_collection[key])[0]
         assert collection_ref in registry._collection_to_key
 
         t1.dispatch.event_one("t1")
