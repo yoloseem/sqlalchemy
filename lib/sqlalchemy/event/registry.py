@@ -228,7 +228,7 @@ class _EventKey(object):
             return False
 
     def conditional_append(self, owner, list_):
-        if self.fn not in list_:
+        if self._listen_fn not in list_:
             self.append_to_list(owner, list_)
             return True
         else:
