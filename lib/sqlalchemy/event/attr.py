@@ -293,12 +293,16 @@ class _ListenerCollection(RefCollection, _CompoundListener):
         registry._stored_in_collection_multi(self, other, to_associate)
 
     def insert(self, event_key, propagate):
-        if event_key.conditional_prepend(self, self.listeners) and propagate:
-            self.propagate.add(event_key._listen_fn)
+        if event_key._listen_fn not in self.listeners:
+            event_key.prepend_to_list(self, self.listeners)
+            if propagate:
+                self.propagate.add(event_key._listen_fn)
 
     def append(self, event_key, propagate):
-        if event_key.conditional_append(self, self.listeners) and propagate:
-            self.propagate.add(event_key._listen_fn)
+        if event_key._listen_fn not in self.listeners:
+            event_key.append_to_list(self, self.listeners)
+            if propagate:
+                self.propagate.add(event_key._listen_fn)
 
     def remove(self, event_key):
         self.listeners.remove(event_key._listen_fn)

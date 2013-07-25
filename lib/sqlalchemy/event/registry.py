@@ -220,19 +220,3 @@ class _EventKey(object):
         _stored_in_collection(self, owner)
         list_.insert(0, self._listen_fn)
 
-    def conditional_prepend(self, owner, list_):
-        if self._listen_fn not in list_:
-            self.prepend_to_list(owner, list_)
-            return True
-        else:
-            return False
-
-    def conditional_append(self, owner, list_):
-        if self._listen_fn not in list_:
-            self.append_to_list(owner, list_)
-            return True
-        else:
-            return False
-
-
-
