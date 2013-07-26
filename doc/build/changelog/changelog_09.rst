@@ -7,6 +7,26 @@
     :version: 0.9.0
 
     .. change::
+        :tags: feature, examples
+
+        Improved the examples in ``examples/generic_associations``, including
+        that ``discriminator_on_association.py`` makes use of single table
+        inheritance do the work with the "discriminator".  Also
+        added a true "generic foreign key" example, which works similarly
+        to other popular frameworks in that it uses an open-ended integer
+        to point to any other table, foregoing traditional referential
+        integrity.  While we don't recommend this pattern, information wants
+        to be free.  Also in 0.8.3.
+
+    .. change::
+        :tags: feature, orm, declarative
+
+        Added a convenience class decorator :func:`.as_declarative`, is
+        a wrapper for :func:`.declarative_base` which allows an existing base
+        class to be applied using a nifty class-decorated approach.  Also
+        in 0.8.3.
+
+    .. change::
         :tags: bug, orm
         :tickets: 2786
 
@@ -67,6 +87,31 @@
         is recreated, due to a disconnect error.   This fixes a particular
         issue in the Oracle 8 dialect, but in general the dialect.initialize()
         phase should only be once per dialect.  Also in 0.8.3.
+
+    .. change::
+        :tags: feature, orm
+        :tickets: 2789
+
+        The mechanism by which attribute events pass along an
+        :class:`.AttributeImpl` as an "initiator" token has been changed;
+        the object is now an event-specific object called :class:`.attributes.Event`.
+        Additionally, the attribute system no longer halts events based
+        on a matching "initiator" token; this logic has been moved to be
+        specific to ORM backref event handlers, which are the typical source
+        of the re-propagation of an attribute event onto subsequent append/set/remove
+        operations.  End user code which emulates the behavior of backrefs
+        must now ensure that recursive event propagation schemes are halted,
+        if the scheme does not use the backref handlers.   Using this new system,
+        backref handlers can now peform a
+        "two-hop" operation when an object is appended to a collection,
+        associated with a new many-to-one, de-associated with the previous
+        many-to-one, and then removed from a previous collection.   Before this
+        change, the last step of removal from the previous collection would
+        not occur.
+
+        .. seealso::
+
+            :ref:`migration_2789`
 
     .. change::
         :tags: feature, sql
