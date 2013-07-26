@@ -84,6 +84,8 @@ def remove(target, identifier, fn):
     propagated to subclasses of ``SomeMappedClass``; the :func:`.remove` function
     will revert all of these operations.
 
+    .. versionadded:: 0.9.0
+
     """
     for evt_cls in _registrars[identifier]:
         tgt = evt_cls._accept_with(target)
