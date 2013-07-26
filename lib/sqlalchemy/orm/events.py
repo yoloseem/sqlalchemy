@@ -331,7 +331,6 @@ class InstanceEvents(event.Events):
 
         """
 
-
 class _EventsHold(event.RefCollection):
     """Hold onto listeners against unmapped, uninstrumented classes.
 
@@ -355,9 +354,10 @@ class _EventsHold(event.RefCollection):
             if target.class_ in target.all_holds:
                 collection = target.all_holds[target.class_]
             else:
-                collection = target.all_holds[target.class_] = []
+                collection = target.all_holds[target.class_] = {}
 
-            event_key.append_value_to_list(target, collection, (event_key, raw, propagate))
+            event.registry._stored_in_collection(event_key, target)
+            collection[event_key._key] = (event_key, raw, propagate)
 
             if propagate:
                 stack = list(target.class_.__subclasses__())
@@ -369,12 +369,19 @@ class _EventsHold(event.RefCollection):
                         event_key.with_dispatch_target(subject).\
                                 listen(raw=raw, propagate=propagate)
 
+    def remove(self, event_key):
+        target, identifier, fn = \
+            event_key.dispatch_target, event_key.identifier, event_key.fn
+
+        collection = target.all_holds[target.class_]
+        del collection[event_key._key]
+
     @classmethod
     def populate(cls, class_, subject):
         for subclass in class_.__mro__:
             if subclass in cls.all_holds:
                 collection = cls.all_holds[subclass]
-                for event_key, raw, propagate in collection:
+                for event_key, raw, propagate in collection.values():
                     if propagate or subclass is class_:
                         # since we can't be sure in what order different classes
                         # in a hierarchy are triggered with populate(),
