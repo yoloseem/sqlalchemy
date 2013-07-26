@@ -76,11 +76,6 @@ class InstrumentationEvents(event.Events):
             with_wrapper(listen).base_listen()
 
     @classmethod
-    def _remove(cls, identifier, target, fn):
-        raise NotImplementedError("Removal of instrumentation events "
-                                    "not yet implemented")
-
-    @classmethod
     def _clear(cls):
         super(InstrumentationEvents, cls)._clear()
         orm.instrumentation._instrumentation_factory.dispatch._clear()
@@ -198,11 +193,6 @@ class InstanceEvents(event.Events):
         if propagate:
             for mgr in target.subclass_managers(True):
                 event_key.with_dispatch_target(mgr).base_listen(propagate=True)
-
-    @classmethod
-    def _remove(cls, identifier, target, fn):
-        msg = "Removal of instance events not yet implemented"
-        raise NotImplementedError(msg)
 
     @classmethod
     def _clear(cls):
@@ -1073,11 +1063,6 @@ class MapperEvents(event.Events):
 
         """
 
-    @classmethod
-    def _remove(cls, identifier, target, fn):
-        "Removal of mapper events not yet implemented"
-        raise NotImplementedError(msg)
-
 
 class _MapperEventsHold(_EventsHold):
     all_holds = weakref.WeakKeyDictionary()
@@ -1144,11 +1129,6 @@ class SessionEvents(event.Events):
             return target
         else:
             return None
-
-    @classmethod
-    def _remove(cls, identifier, target, fn):
-        msg = "Removal of session events not yet implemented"
-        raise NotImplementedError(msg)
 
     def after_transaction_create(self, session, transaction):
         """Execute when a new :class:`.SessionTransaction` is created.
@@ -1569,11 +1549,6 @@ class AttributeEvents(event.Events):
 
             for mgr in manager.subclass_managers(True):
                 event_key.with_dispatch_target(mgr[target.key]).base_listen(propagate=True)
-
-    @classmethod
-    def _remove(cls, identifier, target, fn):
-        msg = "Removal of attribute events not yet implemented"
-        raise NotImplementedError(msg)
 
     def append(self, target, value, initiator):
         """Receive a collection append event.

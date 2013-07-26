@@ -18,8 +18,6 @@ from sqlalchemy.testing.mock import Mock, call
 
 class _RemoveListeners(object):
     def teardown(self):
-        # TODO: need to get remove() functionality
-        # going
         events.MapperEvents._clear()
         events.InstanceEvents._clear()
         events.SessionEvents._clear()
