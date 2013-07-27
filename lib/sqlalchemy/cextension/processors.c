@@ -173,8 +173,8 @@ str_to_time(PyObject *self, PyObject *arg)
 #if PY_MAJOR_VERSION >= 3
     bytes = PyUnicode_AsASCIIString(arg);
     if (bytes == NULL)
-        str = NULL
-    else:
+        str = NULL;
+    else
         str = PyBytes_AS_STRING(bytes);
 #else
     str = PyString_AsString(arg);
