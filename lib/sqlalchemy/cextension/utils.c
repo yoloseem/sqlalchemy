@@ -210,8 +210,7 @@ initcutils(void)
 #if PY_MAJOR_VERSION >= 3
     m = PyModule_Create(&module_def);
 #else
-    m = Py_InitModule3("cutils", module_methods,
-                       "Internal utility functions.");
+    m = Py_InitModule3(MODULE_NAME, module_methods, MODULE_DOC);
 #endif
 
 #if PY_MAJOR_VERSION >= 3
