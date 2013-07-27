@@ -7,6 +7,12 @@
     :version: 0.9.0
 
     .. change::
+        :tags: feature, general, py3k
+        :tickets: 2161
+
+        The C extensions are ported to Python 3.3.
+
+    .. change::
         :tags: feature, orm
         :tickets: 2268
 
@@ -622,7 +628,7 @@
         official Python driver.
 
     .. change::
-    	:tags: feature, general
+    	:tags: feature, general, py3k
       	:tickets: 2671
 
         The codebase is now "in-place" for Python
