@@ -61,7 +61,7 @@ def save_obj(base_mapper, states, uowtransaction, single=False):
         if insert:
             _emit_insert_statements(base_mapper, uowtransaction,
                                     cached_connections,
-                                    table, insert)
+                                    mapper, table, insert)
 
     _finalize_insert_update_commands(base_mapper, uowtransaction,
                                     states_to_insert, states_to_update)
@@ -246,6 +246,7 @@ def _collect_insert_commands(base_mapper, uowtransaction, table,
         value_params = {}
 
         has_all_pks = True
+        has_all_defaults = True
         for col in mapper._cols_by_table[table]:
             if col is mapper.version_id_col:
                 val = mapper.version_id_generator(None)
@@ -265,7 +266,7 @@ def _collect_insert_commands(base_mapper, uowtransaction, table,
                         params[col.key] = value
                     elif col.server_default is not None and \
                         mapper.base_mapper.eager_defaults:
-                        has_all_pks = False
+                        has_all_defaults = False
 
                 elif isinstance(value, sql.ClauseElement):
                     value_params[col] = value
@@ -273,7 +274,8 @@ def _collect_insert_commands(base_mapper, uowtransaction, table,
                     params[col.key] = value
 
         insert.append((state, state_dict, params, mapper,
-                        connection, value_params, has_all_pks))
+                        connection, value_params, has_all_pks,
+                        has_all_defaults))
     return insert
 
 
@@ -488,6 +490,11 @@ def _emit_update_statements(base_mapper, uowtransaction,
         stmt = table.update(clause)
         if mapper.base_mapper.eager_defaults:
             stmt = stmt.return_defaults()
+        elif mapper.version_id_col is not None:
+            stmt = stmt.return_defaults(
+                            cols=[mapper.version_id_col]
+                        )
+
         return stmt
 
     statement = base_mapper._memo(('update', table), update_stmt)
@@ -530,32 +537,38 @@ def _emit_update_statements(base_mapper, uowtransaction,
 
 
 def _emit_insert_statements(base_mapper, uowtransaction,
-                        cached_connections, table, insert):
+                        cached_connections, mapper, table, insert):
     """Emit INSERT statements corresponding to value lists collected
     by _collect_insert_commands()."""
 
     statement = base_mapper._memo(('insert', table), table.insert)
 
-    for (connection, pkeys, hasvalue, has_all_pks), \
+    for (connection, pkeys, hasvalue, has_all_pks, has_all_defaults), \
         records in groupby(insert,
                             lambda rec: (rec[4],
                                     list(rec[2].keys()),
                                     bool(rec[5]),
-                                    rec[6])
+                                    rec[6], rec[7])
     ):
-        if has_all_pks and not hasvalue:
+        if \
+            (
+                has_all_defaults
+                or not base_mapper.eager_defaults
+                or not connection.dialect.implicit_returning
+            ) and has_all_pks and not hasvalue:
+
             records = list(records)
             multiparams = [rec[2] for rec in records]
 
             c = cached_connections[connection].\
                                 execute(statement, multiparams)
 
-            for (state, state_dict, params, mapper,
-                    conn, value_params, has_all_pks), \
+            for (state, state_dict, params, mapper_rec,
+                    conn, value_params, has_all_pks, has_all_defaults), \
                     last_inserted_params in \
                     zip(records, c.context.compiled_parameters):
                 _postfetch(
-                        mapper,
+                        mapper_rec,
                         uowtransaction,
                         table,
                         state,
@@ -565,11 +578,16 @@ def _emit_insert_statements(base_mapper, uowtransaction,
                         value_params)
 
         else:
-            for state, state_dict, params, mapper, \
-                        connection, value_params, \
-                        has_all_pks in records:
-
+            if not has_all_defaults and base_mapper.eager_defaults:
                 statement = statement.return_defaults()
+            elif mapper.version_id_col is not None:
+                statement = statement.return_defaults(
+                                cols=[mapper.version_id_col]
+                            )
+
+            for state, state_dict, params, mapper_rec, \
+                        connection, value_params, \
+                        has_all_pks, has_all_defaults in records:
 
                 if value_params:
                     result = connection.execute(
@@ -585,17 +603,17 @@ def _emit_insert_statements(base_mapper, uowtransaction,
                     # set primary key attributes
                     for pk, col in zip(primary_key,
                                     mapper._pks_by_table[table]):
-                        prop = mapper._columntoproperty[col]
+                        prop = mapper_rec._columntoproperty[col]
                         if state_dict.get(prop.key) is None:
                             # TODO: would rather say:
                             #state_dict[prop.key] = pk
-                            mapper._set_state_attr_by_column(
+                            mapper_rec._set_state_attr_by_column(
                                         state,
                                         state_dict,
                                         col, pk)
 
                 _postfetch(
-                        mapper,
+                        mapper_rec,
                         uowtransaction,
                         table,
                         state,
@@ -717,6 +735,17 @@ def _finalize_insert_update_commands(base_mapper, uowtransaction,
                 uowtransaction.session.query(base_mapper),
                 state.key, refresh_state=state,
                 only_load_props=state.unloaded)
+
+        # else if version id value isn't present, TODO try to
+        # simplify the code here vs. eager_defaults above
+        elif mapper.version_id_col is not None:
+            prop = mapper._columntoproperty[mapper.version_id_col]
+            if prop.key in state.unloaded:
+                state.key = base_mapper._identity_key_from_state(state)
+                loading.load_on_ident(
+                    uowtransaction.session.query(base_mapper),
+                    state.key, refresh_state=state,
+                    only_load_props=[prop.key])
 
         # call after_XXX extensions
         if not has_identity:
