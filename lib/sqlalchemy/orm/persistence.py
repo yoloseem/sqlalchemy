@@ -248,7 +248,9 @@ def _collect_insert_commands(base_mapper, uowtransaction, table,
         has_all_pks = True
         for col in mapper._cols_by_table[table]:
             if col is mapper.version_id_col:
-                params[col.key] = mapper.version_id_generator(None)
+                val = mapper.version_id_generator(None)
+                if val is not None:
+                    params[col.key] = val
             else:
                 # pull straight from the dict for
                 # pending objects
@@ -261,6 +263,9 @@ def _collect_insert_commands(base_mapper, uowtransaction, table,
                     elif col.default is None and \
                          col.server_default is None:
                         params[col.key] = value
+                    elif col.server_default is not None and \
+                        mapper.base_mapper.eager_defaults:
+                        has_all_pks = False
 
                 elif isinstance(value, sql.ClauseElement):
                     value_params[col] = value
@@ -315,19 +320,21 @@ def _collect_update_commands(base_mapper, uowtransaction,
                     params[col.key] = history.added[0]
                     hasdata = True
                 else:
-                    params[col.key] = mapper.version_id_generator(
+                    val = mapper.version_id_generator(
                                                 params[col._label])
+                    if val is not None:
+                        params[col.key] = val
 
-                    # HACK: check for history, in case the
-                    # history is only
-                    # in a different table than the one
-                    # where the version_id_col is.
-                    for prop in mapper._columntoproperty.values():
-                        history = attributes.get_state_history(
-                                state, prop.key,
-                                attributes.PASSIVE_NO_INITIALIZE)
-                        if history.added:
-                            hasdata = True
+                        # HACK: check for history, in case the
+                        # history is only
+                        # in a different table than the one
+                        # where the version_id_col is.
+                        for prop in mapper._columntoproperty.values():
+                            history = attributes.get_state_history(
+                                    state, prop.key,
+                                    attributes.PASSIVE_NO_INITIALIZE)
+                            if history.added:
+                                hasdata = True
             else:
                 prop = mapper._columntoproperty[col]
                 history = attributes.get_state_history(
@@ -478,7 +485,10 @@ def _emit_update_statements(base_mapper, uowtransaction,
                     sql.bindparam(mapper.version_id_col._label,
                                     type_=mapper.version_id_col.type))
 
-        return table.update(clause)
+        stmt = table.update(clause)
+        if mapper.base_mapper.eager_defaults:
+            stmt = stmt.return_defaults()
+        return stmt
 
     statement = base_mapper._memo(('update', table), update_stmt)
 
@@ -500,8 +510,7 @@ def _emit_update_statements(base_mapper, uowtransaction,
                 table,
                 state,
                 state_dict,
-                c.context.prefetch_cols,
-                c.context.postfetch_cols,
+                c,
                 c.context.compiled_parameters[0],
                 value_params)
         rows += c.rowcount
@@ -537,6 +546,7 @@ def _emit_insert_statements(base_mapper, uowtransaction,
         if has_all_pks and not hasvalue:
             records = list(records)
             multiparams = [rec[2] for rec in records]
+
             c = cached_connections[connection].\
                                 execute(statement, multiparams)
 
@@ -550,8 +560,7 @@ def _emit_insert_statements(base_mapper, uowtransaction,
                         table,
                         state,
                         state_dict,
-                        c.context.prefetch_cols,
-                        c.context.postfetch_cols,
+                        c,
                         last_inserted_params,
                         value_params)
 
@@ -559,6 +568,8 @@ def _emit_insert_statements(base_mapper, uowtransaction,
             for state, state_dict, params, mapper, \
                         connection, value_params, \
                         has_all_pks in records:
+
+                statement = statement.return_defaults()
 
                 if value_params:
                     result = connection.execute(
@@ -589,8 +600,7 @@ def _emit_insert_statements(base_mapper, uowtransaction,
                         table,
                         state,
                         state_dict,
-                        result.context.prefetch_cols,
-                        result.context.postfetch_cols,
+                        result,
                         result.context.compiled_parameters[0],
                         value_params)
 
@@ -716,14 +726,25 @@ def _finalize_insert_update_commands(base_mapper, uowtransaction,
 
 
 def _postfetch(mapper, uowtransaction, table,
-                state, dict_, prefetch_cols, postfetch_cols,
-                            params, value_params):
+                state, dict_, result, params, value_params):
     """Expire attributes in need of newly persisted database state,
     after an INSERT or UPDATE statement has proceeded for that
     state."""
 
+    prefetch_cols = result.context.prefetch_cols
+    postfetch_cols = result.context.postfetch_cols
+    returning_cols = result.context.returning_cols
+
     if mapper.version_id_col is not None:
         prefetch_cols = list(prefetch_cols) + [mapper.version_id_col]
+
+    if returning_cols:
+        row = result.context.returned_defaults
+        if row is not None:
+            for col in returning_cols:
+                if col.primary_key:
+                    continue
+                mapper._set_state_attr_by_column(state, dict_, col, row[col])
 
     for c in prefetch_cols:
         if c.key in params and c in mapper._columntoproperty:

@@ -1653,11 +1653,12 @@ class SQLCompiler(engine.Compiled):
                         '=' + c[1] for c in colparams
                         )
 
-        if update_stmt._returning:
-            self.returning = update_stmt._returning
+        if self.returning or update_stmt._returning:
+            if not self.returning:
+                self.returning = update_stmt._returning
             if self.returning_precedes_values:
                 text += " " + self.returning_clause(
-                                    update_stmt, update_stmt._returning)
+                                    update_stmt, self.returning)
 
         if extra_froms:
             extra_from_text = self.update_from_clause(
@@ -1677,7 +1678,7 @@ class SQLCompiler(engine.Compiled):
 
         if self.returning and not self.returning_precedes_values:
             text += " " + self.returning_clause(
-                                    update_stmt, update_stmt._returning)
+                                    update_stmt, self.returning)
 
         self.stack.pop(-1)
 
@@ -1758,6 +1759,19 @@ class SQLCompiler(engine.Compiled):
                                 self.dialect.implicit_returning and \
                                 stmt.table.implicit_returning
 
+        if self.isinsert:
+            implicit_return_defaults = implicit_returning and stmt._return_defaults
+        elif self.isupdate:
+            implicit_return_defaults = self.dialect.implicit_returning and \
+                                stmt.table.implicit_returning and \
+                                stmt._return_defaults
+
+        if implicit_return_defaults:
+            if stmt._return_defaults is True:
+                implicit_return_defaults = set(stmt.table.c)
+            else:
+                implicit_return_defaults = set(stmt._return_defaults)
+
         postfetch_lastrowid = need_pks and self.dialect.postfetch_lastrowid
 
         check_columns = {}
@@ -1808,6 +1822,7 @@ class SQLCompiler(engine.Compiled):
         # otherwise we might iterate through individual sets of
         # "defaults", "primary key cols", etc.
         for c in stmt.table.columns:
+
             if c.key in parameters and c.key not in check_columns:
                 value = parameters.pop(c.key)
                 if sql._is_literal(value):
@@ -1818,6 +1833,10 @@ class SQLCompiler(engine.Compiled):
                                         else "%s_0" % c.key
                                     )
                 elif c.primary_key and implicit_returning:
+                    self.returning.append(c)
+                    value = self.process(value.self_group())
+                elif implicit_return_defaults and \
+                    c in implicit_return_defaults:
                     self.returning.append(c)
                     value = self.process(value.self_group())
                 else:
@@ -1876,14 +1895,20 @@ class SQLCompiler(engine.Compiled):
                             not self.dialect.sequences_optional):
                             proc = self.process(c.default)
                             values.append((c, proc))
-                            if not c.primary_key:
+                            if implicit_return_defaults and \
+                                c in implicit_return_defaults:
+                                self.returning.append(c)
+                            elif not c.primary_key:
                                 self.postfetch.append(c)
                     elif c.default.is_clause_element:
                         values.append(
                             (c, self.process(c.default.arg.self_group()))
                         )
 
-                        if not c.primary_key:
+                        if implicit_return_defaults and \
+                            c in implicit_return_defaults:
+                            self.returning.append(c)
+                        elif not c.primary_key:
                             # dont add primary key column to postfetch
                             self.postfetch.append(c)
                     else:
@@ -1892,7 +1917,10 @@ class SQLCompiler(engine.Compiled):
                         )
                         self.prefetch.append(c)
                 elif c.server_default is not None:
-                    if not c.primary_key:
+                    if implicit_return_defaults and \
+                        c in implicit_return_defaults:
+                        self.returning.append(c)
+                    elif not c.primary_key:
                         self.postfetch.append(c)
 
             elif self.isupdate:
@@ -1901,14 +1929,22 @@ class SQLCompiler(engine.Compiled):
                         values.append(
                             (c, self.process(c.onupdate.arg.self_group()))
                         )
-                        self.postfetch.append(c)
+                        if implicit_return_defaults and \
+                            c in implicit_return_defaults:
+                            self.returning.append(c)
+                        else:
+                            self.postfetch.append(c)
                     else:
                         values.append(
                             (c, self._create_crud_bind_param(c, None))
                         )
                         self.prefetch.append(c)
                 elif c.server_onupdate is not None:
-                    self.postfetch.append(c)
+                    if implicit_return_defaults and \
+                        c in implicit_return_defaults:
+                        self.returning.append(c)
+                    else:
+                        self.postfetch.append(c)
 
         if parameters and stmt_parameters:
             check = set(parameters).intersection(
