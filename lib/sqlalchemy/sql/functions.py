@@ -29,6 +29,213 @@ def register_function(identifier, fn, package="_default"):
     reg[identifier] = fn
 
 
+class FunctionElement(Executable, ColumnElement, FromClause):
+    """Base for SQL function-oriented constructs.
+
+    .. seealso::
+
+        :class:`.Function` - named SQL function.
+
+        :data:`.func` - namespace which produces registered or ad-hoc
+        :class:`.Function` instances.
+
+        :class:`.GenericFunction` - allows creation of registered function
+        types.
+
+    """
+
+    packagenames = ()
+
+    def __init__(self, *clauses, **kwargs):
+        """Construct a :class:`.FunctionElement`.
+        """
+        args = [_literal_as_binds(c, self.name) for c in clauses]
+        self.clause_expr = ClauseList(
+                                operator=operators.comma_op,
+                                 group_contents=True, *args).\
+                                 self_group()
+
+    @property
+    def columns(self):
+        """Fulfill the 'columns' contract of :class:`.ColumnElement`.
+
+        Returns a single-element list consisting of this object.
+
+        """
+        return [self]
+
+    @util.memoized_property
+    def clauses(self):
+        """Return the underlying :class:`.ClauseList` which contains
+        the arguments for this :class:`.FunctionElement`.
+
+        """
+        return self.clause_expr.element
+
+    def over(self, partition_by=None, order_by=None):
+        """Produce an OVER clause against this function.
+
+        Used against aggregate or so-called "window" functions,
+        for database backends that support window functions.
+
+        The expression::
+
+            func.row_number().over(order_by='x')
+
+        is shorthand for::
+
+            from sqlalchemy import over
+            over(func.row_number(), order_by='x')
+
+        See :func:`~.expression.over` for a full description.
+
+        .. versionadded:: 0.7
+
+        """
+        return over(self, partition_by=partition_by, order_by=order_by)
+
+    @property
+    def _from_objects(self):
+        return self.clauses._from_objects
+
+    def get_children(self, **kwargs):
+        return self.clause_expr,
+
+    def _copy_internals(self, clone=_clone, **kw):
+        self.clause_expr = clone(self.clause_expr, **kw)
+        self._reset_exported()
+        FunctionElement.clauses._reset(self)
+
+    def select(self):
+        """Produce a :func:`~.expression.select` construct
+        against this :class:`.FunctionElement`.
+
+        This is shorthand for::
+
+            s = select([function_element])
+
+        """
+        s = select([self])
+        if self._execution_options:
+            s = s.execution_options(**self._execution_options)
+        return s
+
+    def scalar(self):
+        """Execute this :class:`.FunctionElement` against an embedded
+        'bind' and return a scalar value.
+
+        This first calls :meth:`~.FunctionElement.select` to
+        produce a SELECT construct.
+
+        Note that :class:`.FunctionElement` can be passed to
+        the :meth:`.Connectable.scalar` method of :class:`.Connection`
+        or :class:`.Engine`.
+
+        """
+        return self.select().execute().scalar()
+
+    def execute(self):
+        """Execute this :class:`.FunctionElement` against an embedded
+        'bind'.
+
+        This first calls :meth:`~.FunctionElement.select` to
+        produce a SELECT construct.
+
+        Note that :class:`.FunctionElement` can be passed to
+        the :meth:`.Connectable.execute` method of :class:`.Connection`
+        or :class:`.Engine`.
+
+        """
+        return self.select().execute()
+
+    def _bind_param(self, operator, obj):
+        return BindParameter(None, obj, _compared_to_operator=operator,
+                                _compared_to_type=self.type, unique=True)
+
+
+class _FunctionGenerator(object):
+    """Generate :class:`.Function` objects based on getattr calls."""
+
+    def __init__(self, **opts):
+        self.__names = []
+        self.opts = opts
+
+    def __getattr__(self, name):
+        # passthru __ attributes; fixes pydoc
+        if name.startswith('__'):
+            try:
+                return self.__dict__[name]
+            except KeyError:
+                raise AttributeError(name)
+
+        elif name.endswith('_'):
+            name = name[0:-1]
+        f = _FunctionGenerator(**self.opts)
+        f.__names = list(self.__names) + [name]
+        return f
+
+    def __call__(self, *c, **kwargs):
+        o = self.opts.copy()
+        o.update(kwargs)
+
+        tokens = len(self.__names)
+
+        if tokens == 2:
+            package, fname = self.__names
+        elif tokens == 1:
+            package, fname = "_default", self.__names[0]
+        else:
+            package = None
+
+        if package is not None and \
+            package in functions._registry and \
+            fname in functions._registry[package]:
+            func = functions._registry[package][fname]
+            return func(*c, **o)
+
+        return Function(self.__names[-1],
+                        packagenames=self.__names[0:-1], *c, **o)
+
+
+class Function(FunctionElement):
+    """Describe a named SQL function.
+
+    See the superclass :class:`.FunctionElement` for a description
+    of public methods.
+
+    .. seealso::
+
+        :data:`.func` - namespace which produces registered or ad-hoc
+        :class:`.Function` instances.
+
+        :class:`.GenericFunction` - allows creation of registered function
+        types.
+
+    """
+
+    __visit_name__ = 'function'
+
+    def __init__(self, name, *clauses, **kw):
+        """Construct a :class:`.Function`.
+
+        The :data:`.func` construct is normally used to construct
+        new :class:`.Function` instances.
+
+        """
+        self.packagenames = kw.pop('packagenames', None) or []
+        self.name = name
+        self._bind = kw.get('bind', None)
+        self.type = sqltypes.to_instance(kw.get('type_', None))
+
+        FunctionElement.__init__(self, *clauses, **kw)
+
+    def _bind_param(self, operator, obj):
+        return BindParameter(self.name, obj,
+                                _compared_to_operator=operator,
+                                _compared_to_type=self.type,
+                                unique=True)
+
+
 class _GenericMeta(VisitableType):
     def __init__(cls, clsname, bases, clsdict):
         cls.name = name = clsdict.get('name', clsname)

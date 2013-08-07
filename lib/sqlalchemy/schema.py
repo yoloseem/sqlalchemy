@@ -35,7 +35,7 @@ from .sql import expression, visitors
 import collections
 import sqlalchemy
 
-ddl = util.importlater("sqlalchemy.engine", "ddl")
+ddl = util.importlater("sqlalchemy.sql", "ddl")
 sqlutil = util.importlater("sqlalchemy.sql", "util")
 url = util.importlater("sqlalchemy.engine", "url")
 sqltypes = util.importlater("sqlalchemy", "types")

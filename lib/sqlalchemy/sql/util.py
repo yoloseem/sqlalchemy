@@ -5,12 +5,27 @@
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
 from .. import exc, schema, util, sql
+from . import elements, selectable, base
 from ..util import topological
-from . import expression, operators, visitors
+from . import operators, visitors
 from itertools import chain
 from collections import deque
 
-"""Utility functions that build upon SQL and Schema constructs."""
+
+
+def is_column(col):
+    """True if ``col`` is an instance of :class:`.ColumnElement`."""
+
+    return isinstance(col, elements.ColumnElement)
+
+
+def _interpret_as_select(element):
+    element = _interpret_as_from(element)
+    if isinstance(element, Alias):
+        element = element.original
+    if not isinstance(element, Select):
+        element = element.select()
+    return element
 
 
 def sort_tables(tables, skip_fn=None, extra_dependencies=None):
@@ -62,7 +77,7 @@ def find_join_source(clauses, join_to):
 
     """
 
-    selectables = list(expression._from_objects(join_to))
+    selectables = list(_from_objects(join_to))
     for i, f in enumerate(clauses):
         for s in selectables:
             if f.is_derived_from(s):
@@ -420,193 +435,6 @@ def join_condition(a, b, ignore_nonexistent_tables=False,
         return sql.and_(*crit)
 
 
-class Annotated(object):
-    """clones a ClauseElement and applies an 'annotations' dictionary.
-
-    Unlike regular clones, this clone also mimics __hash__() and
-    __cmp__() of the original element so that it takes its place
-    in hashed collections.
-
-    A reference to the original element is maintained, for the important
-    reason of keeping its hash value current.  When GC'ed, the
-    hash value may be reused, causing conflicts.
-
-    """
-
-    def __new__(cls, *args):
-        if not args:
-            # clone constructor
-            return object.__new__(cls)
-        else:
-            element, values = args
-            # pull appropriate subclass from registry of annotated
-            # classes
-            try:
-                cls = annotated_classes[element.__class__]
-            except KeyError:
-                cls = annotated_classes[element.__class__] = type.__new__(type,
-                        "Annotated%s" % element.__class__.__name__,
-                        (cls, element.__class__), {})
-            return object.__new__(cls)
-
-    def __init__(self, element, values):
-        # force FromClause to generate their internal
-        # collections into __dict__
-        if isinstance(element, expression.FromClause):
-            element.c
-
-        self.__dict__ = element.__dict__.copy()
-        expression.ColumnElement.comparator._reset(self)
-        self.__element = element
-        self._annotations = values
-
-    def _annotate(self, values):
-        _values = self._annotations.copy()
-        _values.update(values)
-        return self._with_annotations(_values)
-
-    def _with_annotations(self, values):
-        clone = self.__class__.__new__(self.__class__)
-        clone.__dict__ = self.__dict__.copy()
-        expression.ColumnElement.comparator._reset(clone)
-        clone._annotations = values
-        return clone
-
-    def _deannotate(self, values=None, clone=True):
-        if values is None:
-            return self.__element
-        else:
-            _values = self._annotations.copy()
-            for v in values:
-                _values.pop(v, None)
-            return self._with_annotations(_values)
-
-    def _compiler_dispatch(self, visitor, **kw):
-        return self.__element.__class__._compiler_dispatch(self, visitor, **kw)
-
-    @property
-    def _constructor(self):
-        return self.__element._constructor
-
-    def _clone(self):
-        clone = self.__element._clone()
-        if clone is self.__element:
-            # detect immutable, don't change anything
-            return self
-        else:
-            # update the clone with any changes that have occurred
-            # to this object's __dict__.
-            clone.__dict__.update(self.__dict__)
-            return self.__class__(clone, self._annotations)
-
-    def __hash__(self):
-        return hash(self.__element)
-
-    def __eq__(self, other):
-        if isinstance(self.__element, expression.ColumnOperators):
-            return self.__element.__class__.__eq__(self, other)
-        else:
-            return hash(other) == hash(self)
-
-
-class AnnotatedColumnElement(Annotated):
-    def __init__(self, element, values):
-        Annotated.__init__(self, element, values)
-        for attr in ('name', 'key'):
-            if self.__dict__.get(attr, False) is None:
-                self.__dict__.pop(attr)
-
-    @util.memoized_property
-    def name(self):
-        """pull 'name' from parent, if not present"""
-        return self._Annotated__element.name
-
-    @util.memoized_property
-    def key(self):
-        """pull 'key' from parent, if not present"""
-        return self._Annotated__element.key
-
-    @util.memoized_property
-    def info(self):
-        return self._Annotated__element.info
-
-# hard-generate Annotated subclasses.  this technique
-# is used instead of on-the-fly types (i.e. type.__new__())
-# so that the resulting objects are pickleable.
-annotated_classes = {}
-
-for cls in list(expression.__dict__.values()) + [schema.Column, schema.Table]:
-    if isinstance(cls, type) and issubclass(cls, expression.ClauseElement):
-        if issubclass(cls, expression.ColumnElement):
-            annotation_cls = "AnnotatedColumnElement"
-        else:
-            annotation_cls = "Annotated"
-        exec("class Annotated%s(%s, cls):\n" \
-             "    pass" % (cls.__name__, annotation_cls), locals())
-        exec("annotated_classes[cls] = Annotated%s" % (cls.__name__,))
-
-
-def _deep_annotate(element, annotations, exclude=None):
-    """Deep copy the given ClauseElement, annotating each element
-    with the given annotations dictionary.
-
-    Elements within the exclude collection will be cloned but not annotated.
-
-    """
-    def clone(elem):
-        if exclude and \
-                    hasattr(elem, 'proxy_set') and \
-                    elem.proxy_set.intersection(exclude):
-            newelem = elem._clone()
-        elif annotations != elem._annotations:
-            newelem = elem._annotate(annotations)
-        else:
-            newelem = elem
-        newelem._copy_internals(clone=clone)
-        return newelem
-
-    if element is not None:
-        element = clone(element)
-    return element
-
-
-def _deep_deannotate(element, values=None):
-    """Deep copy the given element, removing annotations."""
-
-    cloned = util.column_dict()
-
-    def clone(elem):
-        # if a values dict is given,
-        # the elem must be cloned each time it appears,
-        # as there may be different annotations in source
-        # elements that are remaining.  if totally
-        # removing all annotations, can assume the same
-        # slate...
-        if values or elem not in cloned:
-            newelem = elem._deannotate(values=values, clone=True)
-            newelem._copy_internals(clone=clone)
-            if not values:
-                cloned[elem] = newelem
-            return newelem
-        else:
-            return cloned[elem]
-
-    if element is not None:
-        element = clone(element)
-    return element
-
-
-def _shallow_annotate(element, annotations):
-    """Annotate the given ClauseElement and copy its internals so that
-    internal objects refer to the new annotated object.
-
-    Basically used to apply a "dont traverse" annotation to a
-    selectable, without digging throughout the whole
-    structure wasting time.
-    """
-    element = element._annotate(annotations)
-    element._copy_internals()
-    return element
 
 
 def splice_joins(left, right, stop_on=None):
@@ -756,174 +584,3 @@ def criterion_as_pairs(expression, consider_as_foreign_keys=None,
     return pairs
 
 
-class AliasedRow(object):
-    """Wrap a RowProxy with a translation map.
-
-    This object allows a set of keys to be translated
-    to those present in a RowProxy.
-
-    """
-    def __init__(self, row, map):
-        # AliasedRow objects don't nest, so un-nest
-        # if another AliasedRow was passed
-        if isinstance(row, AliasedRow):
-            self.row = row.row
-        else:
-            self.row = row
-        self.map = map
-
-    def __contains__(self, key):
-        return self.map[key] in self.row
-
-    def has_key(self, key):
-        return key in self
-
-    def __getitem__(self, key):
-        return self.row[self.map[key]]
-
-    def keys(self):
-        return self.row.keys()
-
-
-class ClauseAdapter(visitors.ReplacingCloningVisitor):
-    """Clones and modifies clauses based on column correspondence.
-
-    E.g.::
-
-      table1 = Table('sometable', metadata,
-          Column('col1', Integer),
-          Column('col2', Integer)
-          )
-      table2 = Table('someothertable', metadata,
-          Column('col1', Integer),
-          Column('col2', Integer)
-          )
-
-      condition = table1.c.col1 == table2.c.col1
-
-    make an alias of table1::
-
-      s = table1.alias('foo')
-
-    calling ``ClauseAdapter(s).traverse(condition)`` converts
-    condition to read::
-
-      s.c.col1 == table2.c.col1
-
-    """
-    def __init__(self, selectable, equivalents=None,
-                        include=None, exclude=None,
-                        include_fn=None, exclude_fn=None,
-                        adapt_on_names=False):
-        self.__traverse_options__ = {'stop_on': [selectable]}
-        self.selectable = selectable
-        if include:
-            assert not include_fn
-            self.include_fn = lambda e: e in include
-        else:
-            self.include_fn = include_fn
-        if exclude:
-            assert not exclude_fn
-            self.exclude_fn = lambda e: e in exclude
-        else:
-            self.exclude_fn = exclude_fn
-        self.equivalents = util.column_dict(equivalents or {})
-        self.adapt_on_names = adapt_on_names
-
-    def _corresponding_column(self, col, require_embedded,
-                              _seen=util.EMPTY_SET):
-        newcol = self.selectable.corresponding_column(
-                                    col,
-                                    require_embedded=require_embedded)
-        if newcol is None and col in self.equivalents and col not in _seen:
-            for equiv in self.equivalents[col]:
-                newcol = self._corresponding_column(equiv,
-                                require_embedded=require_embedded,
-                                _seen=_seen.union([col]))
-                if newcol is not None:
-                    return newcol
-        if self.adapt_on_names and newcol is None:
-            newcol = self.selectable.c.get(col.name)
-        return newcol
-
-    magic_flag = False
-    def replace(self, col):
-        if not self.magic_flag and isinstance(col, expression.FromClause) and \
-            self.selectable.is_derived_from(col):
-            return self.selectable
-        elif not isinstance(col, expression.ColumnElement):
-            return None
-        elif self.include_fn and not self.include_fn(col):
-            return None
-        elif self.exclude_fn and self.exclude_fn(col):
-            return None
-        else:
-            return self._corresponding_column(col, True)
-
-
-class ColumnAdapter(ClauseAdapter):
-    """Extends ClauseAdapter with extra utility functions.
-
-    Provides the ability to "wrap" this ClauseAdapter
-    around another, a columns dictionary which returns
-    adapted elements given an original, and an
-    adapted_row() factory.
-
-    """
-    def __init__(self, selectable, equivalents=None,
-                        chain_to=None, include=None,
-                        exclude=None, adapt_required=False):
-        ClauseAdapter.__init__(self, selectable, equivalents, include, exclude)
-        if chain_to:
-            self.chain(chain_to)
-        self.columns = util.populate_column_dict(self._locate_col)
-        self.adapt_required = adapt_required
-
-    def wrap(self, adapter):
-        ac = self.__class__.__new__(self.__class__)
-        ac.__dict__ = self.__dict__.copy()
-        ac._locate_col = ac._wrap(ac._locate_col, adapter._locate_col)
-        ac.adapt_clause = ac._wrap(ac.adapt_clause, adapter.adapt_clause)
-        ac.adapt_list = ac._wrap(ac.adapt_list, adapter.adapt_list)
-        ac.columns = util.populate_column_dict(ac._locate_col)
-        return ac
-
-    adapt_clause = ClauseAdapter.traverse
-    adapt_list = ClauseAdapter.copy_and_process
-
-    def _wrap(self, local, wrapped):
-        def locate(col):
-            col = local(col)
-            return wrapped(col)
-        return locate
-
-    def _locate_col(self, col):
-        c = self._corresponding_column(col, True)
-        if c is None:
-            c = self.adapt_clause(col)
-
-            # anonymize labels in case they have a hardcoded name
-            if isinstance(c, expression.Label):
-                c = c.label(None)
-
-        # adapt_required used by eager loading to indicate that
-        # we don't trust a result row column that is not translated.
-        # this is to prevent a column from being interpreted as that
-        # of the child row in a self-referential scenario, see
-        # inheritance/test_basic.py->EagerTargetingTest.test_adapt_stringency
-        if self.adapt_required and c is col:
-            return None
-
-        return c
-
-    def adapted_row(self, row):
-        return AliasedRow(row, self.columns)
-
-    def __getstate__(self):
-        d = self.__dict__.copy()
-        del d['columns']
-        return d
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        self.columns = util.PopulateDict(self._locate_col)
