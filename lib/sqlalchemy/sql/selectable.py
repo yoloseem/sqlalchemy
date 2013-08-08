@@ -1,3 +1,7 @@
+from .elements import ClauseElement, TextClause
+from .. import inspection
+from .. import util
+from .. import exc
 
 def _interpret_as_from(element):
     insp = inspection.inspect(element, raiseerr=False)
@@ -7,6 +11,15 @@ def _interpret_as_from(element):
     elif hasattr(insp, "selectable"):
         return insp.selectable
     raise exc.ArgumentError("FROM expression expected")
+
+def _interpret_as_select(element):
+    element = _interpret_as_from(element)
+    if isinstance(element, Alias):
+        element = element.original
+    if not isinstance(element, Select):
+        element = element.select()
+    return element
+
 
 
 class Selectable(ClauseElement):

@@ -1,3 +1,8 @@
+from .base import HasPrefixes, Executable, _generative
+from .elements import ClauseElement, _literal_as_text
+from .selectable import _interpret_as_from, _interpret_as_select
+from .. import util
+from .. import exc
 
 class UpdateBase(HasPrefixes, Executable, ClauseElement):
     """Form the base for ``INSERT``, ``UPDATE``, and ``DELETE`` statements.

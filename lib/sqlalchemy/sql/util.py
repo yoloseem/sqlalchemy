@@ -19,14 +19,6 @@ def is_column(col):
     return isinstance(col, elements.ColumnElement)
 
 
-def _interpret_as_select(element):
-    element = _interpret_as_from(element)
-    if isinstance(element, Alias):
-        element = element.original
-    if not isinstance(element, Select):
-        element = element.select()
-    return element
-
 
 def sort_tables(tables, skip_fn=None, extra_dependencies=None):
     """sort a collection of Table objects in order of
