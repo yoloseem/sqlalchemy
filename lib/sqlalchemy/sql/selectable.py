@@ -21,6 +21,142 @@ def _interpret_as_select(element):
     return element
 
 
+def select(columns=None, whereclause=None, from_obj=[], **kwargs):
+    """Returns a ``SELECT`` clause element.
+
+    Similar functionality is also available via the :func:`select()`
+    method on any :class:`.FromClause`.
+
+    The returned object is an instance of :class:`.Select`.
+
+    All arguments which accept :class:`.ClauseElement` arguments also accept
+    string arguments, which will be converted as appropriate into
+    either :func:`text()` or :func:`literal_column()` constructs.
+
+    .. seealso::
+
+        :ref:`coretutorial_selecting` - Core Tutorial description of
+        :func:`.select`.
+
+    :param columns:
+      A list of :class:`.ClauseElement` objects, typically
+      :class:`.ColumnElement` objects or subclasses, which will form the
+      columns clause of the resulting statement. For all members which are
+      instances of :class:`.Selectable`, the individual :class:`.ColumnElement`
+      members of the :class:`.Selectable` will be added individually to the
+      columns clause. For example, specifying a
+      :class:`~sqlalchemy.schema.Table` instance will result in all the
+      contained :class:`~sqlalchemy.schema.Column` objects within to be added
+      to the columns clause.
+
+      This argument is not present on the form of :func:`select()`
+      available on :class:`~sqlalchemy.schema.Table`.
+
+    :param whereclause:
+      A :class:`.ClauseElement` expression which will be used to form the
+      ``WHERE`` clause.
+
+    :param from_obj:
+      A list of :class:`.ClauseElement` objects which will be added to the
+      ``FROM`` clause of the resulting statement. Note that "from" objects are
+      automatically located within the columns and whereclause ClauseElements.
+      Use this parameter to explicitly specify "from" objects which are not
+      automatically locatable. This could include
+      :class:`~sqlalchemy.schema.Table` objects that aren't otherwise present,
+      or :class:`.Join` objects whose presence will supercede that of the
+      :class:`~sqlalchemy.schema.Table` objects already located in the other
+      clauses.
+
+    :param autocommit:
+      Deprecated.  Use .execution_options(autocommit=<True|False>)
+      to set the autocommit option.
+
+    :param bind=None:
+      an :class:`~.base.Engine` or :class:`~.base.Connection` instance
+      to which the
+      resulting :class:`.Select` object will be bound.  The :class:`.Select`
+      object will otherwise automatically bind to whatever
+      :class:`~.base.Connectable` instances can be located within its contained
+      :class:`.ClauseElement` members.
+
+    :param correlate=True:
+      indicates that this :class:`.Select` object should have its
+      contained :class:`.FromClause` elements "correlated" to an enclosing
+      :class:`.Select` object.  This means that any :class:`.ClauseElement`
+      instance within the "froms" collection of this :class:`.Select`
+      which is also present in the "froms" collection of an
+      enclosing select will not be rendered in the ``FROM`` clause
+      of this select statement.
+
+    :param distinct=False:
+      when ``True``, applies a ``DISTINCT`` qualifier to the columns
+      clause of the resulting statement.
+
+      The boolean argument may also be a column expression or list
+      of column expressions - this is a special calling form which
+      is understood by the Postgresql dialect to render the
+      ``DISTINCT ON (<columns>)`` syntax.
+
+      ``distinct`` is also available via the :meth:`~.Select.distinct`
+      generative method.
+
+    :param for_update=False:
+      when ``True``, applies ``FOR UPDATE`` to the end of the
+      resulting statement.
+
+      Certain database dialects also support
+      alternate values for this parameter:
+
+      * With the MySQL dialect, the value ``"read"`` translates to
+        ``LOCK IN SHARE MODE``.
+      * With the Oracle and Postgresql dialects, the value ``"nowait"``
+        translates to ``FOR UPDATE NOWAIT``.
+      * With the Postgresql dialect, the values "read" and ``"read_nowait"``
+        translate to ``FOR SHARE`` and ``FOR SHARE NOWAIT``, respectively.
+
+        .. versionadded:: 0.7.7
+
+    :param group_by:
+      a list of :class:`.ClauseElement` objects which will comprise the
+      ``GROUP BY`` clause of the resulting select.
+
+    :param having:
+      a :class:`.ClauseElement` that will comprise the ``HAVING`` clause
+      of the resulting select when ``GROUP BY`` is used.
+
+    :param limit=None:
+      a numerical value which usually compiles to a ``LIMIT``
+      expression in the resulting select.  Databases that don't
+      support ``LIMIT`` will attempt to provide similar
+      functionality.
+
+    :param offset=None:
+      a numeric value which usually compiles to an ``OFFSET``
+      expression in the resulting select.  Databases that don't
+      support ``OFFSET`` will attempt to provide similar
+      functionality.
+
+    :param order_by:
+      a scalar or list of :class:`.ClauseElement` objects which will
+      comprise the ``ORDER BY`` clause of the resulting select.
+
+    :param use_labels=False:
+      when ``True``, the statement will be generated using labels
+      for each column in the columns clause, which qualify each
+      column with its parent table's (or aliases) name so that name
+      conflicts between columns in different tables don't occur.
+      The format of the label is <tablename>_<column>.  The "c"
+      collection of the resulting :class:`.Select` object will use these
+      names as well for targeting column members.
+
+      use_labels is also available via the :meth:`~.SelectBase.apply_labels`
+      generative method.
+
+    """
+    return Select(columns, whereclause=whereclause, from_obj=from_obj,
+                  **kwargs)
+
+
 
 class Selectable(ClauseElement):
     """mark a class as being selectable"""

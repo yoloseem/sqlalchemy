@@ -2,6 +2,7 @@ from .. import util, exc, inspection, types as sqltypes
 from . import operators
 from .visitors import Visitable
 import itertools
+from .base import Executable
 
 annotation = util.importlater("sqlalchemy.sql", "annotation")
 
@@ -209,6 +210,107 @@ def _interpret_as_column_or_from(element):
         return insp.selectable
 
     return ColumnClause(str(element), is_literal=True)
+
+def nullsfirst(column):
+    """Return a NULLS FIRST ``ORDER BY`` clause element.
+
+    e.g.::
+
+      someselect.order_by(desc(table1.mycol).nullsfirst())
+
+    produces::
+
+      ORDER BY mycol DESC NULLS FIRST
+
+    """
+    return UnaryExpression(column, modifier=operators.nullsfirst_op)
+
+
+def nullslast(column):
+    """Return a NULLS LAST ``ORDER BY`` clause element.
+
+    e.g.::
+
+      someselect.order_by(desc(table1.mycol).nullslast())
+
+    produces::
+
+        ORDER BY mycol DESC NULLS LAST
+
+    """
+    return UnaryExpression(column, modifier=operators.nullslast_op)
+
+
+def desc(column):
+    """Return a descending ``ORDER BY`` clause element.
+
+    e.g.::
+
+      someselect.order_by(desc(table1.mycol))
+
+    produces::
+
+        ORDER BY mycol DESC
+
+    """
+    return UnaryExpression(column, modifier=operators.desc_op)
+
+
+def asc(column):
+    """Return an ascending ``ORDER BY`` clause element.
+
+    e.g.::
+
+      someselect.order_by(asc(table1.mycol))
+
+    produces::
+
+      ORDER BY mycol ASC
+
+    """
+    return UnaryExpression(column, modifier=operators.asc_op)
+
+
+def null():
+    """Return a :class:`Null` object, which compiles to ``NULL``.
+
+    """
+    return Null()
+
+
+def true():
+    """Return a :class:`True_` object, which compiles to ``true``, or the
+    boolean equivalent for the target dialect.
+
+    """
+    return True_()
+
+
+def false():
+    """Return a :class:`False_` object, which compiles to ``false``, or the
+    boolean equivalent for the target dialect.
+
+    """
+    return False_()
+
+def collate(expression, collation):
+    """Return the clause ``expression COLLATE collation``.
+
+    e.g.::
+
+        collate(mycolumn, 'utf8_bin')
+
+    produces::
+
+        mycolumn COLLATE utf8_bin
+
+    """
+
+    expr = _literal_as_binds(expression)
+    return BinaryExpression(
+        expr,
+        _literal_as_text(collation),
+        operators.collate, type_=expr.type)
 
 
 def _const_expr(element):

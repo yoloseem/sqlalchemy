@@ -1,5 +1,5 @@
 from .base import HasPrefixes, Executable, _generative
-from .elements import ClauseElement, _literal_as_text
+from .elements import ClauseElement, _literal_as_text, Null, and_, _clone
 from .selectable import _interpret_as_from, _interpret_as_select
 from .. import util
 from .. import exc
@@ -370,7 +370,7 @@ class Insert(ValuesBase):
                         "This construct already inserts value expressions")
 
         self.parameters, self._has_multi_parameters = \
-                self._process_colparams(dict((n, null()) for n in names))
+                self._process_colparams(dict((n, Null()) for n in names))
 
         self.select = _interpret_as_select(select)
 
