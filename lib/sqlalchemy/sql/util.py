@@ -5,8 +5,7 @@
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
 from .. import exc, util
-from . import elements
-from ..util import topological
+from . import elements, schema
 from . import operators, visitors
 from itertools import chain
 from collections import deque
@@ -19,37 +18,6 @@ def is_column(col):
     return isinstance(col, elements.ColumnElement)
 
 
-
-def sort_tables(tables, skip_fn=None, extra_dependencies=None):
-    """sort a collection of Table objects in order of
-                their foreign-key dependency."""
-
-    tables = list(tables)
-    tuples = []
-    if extra_dependencies is not None:
-        tuples.extend(extra_dependencies)
-
-    def visit_foreign_key(fkey):
-        if fkey.use_alter:
-            return
-        elif skip_fn and skip_fn(fkey):
-            return
-        parent_table = fkey.column.table
-        if parent_table in tables:
-            child_table = fkey.parent.table
-            if parent_table is not child_table:
-                tuples.append((parent_table, child_table))
-
-    for table in tables:
-        visitors.traverse(table,
-                            {'schema_visitor': True},
-                            {'foreign_key': visit_foreign_key})
-
-        tuples.extend(
-            [parent, table] for parent in table._extra_dependencies
-        )
-
-    return list(topological.sort(tuples, tables))
 
 
 def find_join_source(clauses, join_to):
@@ -169,13 +137,6 @@ def find_tables(clause, check_columns=False,
     visitors.traverse(clause, {'column_collections': False}, _visitors)
     return tables
 
-
-def find_columns(clause):
-    """locate Column objects within the given expression."""
-
-    cols = util.column_set()
-    visitors.traverse(clause, {}, {'column': cols.add})
-    return cols
 
 
 def unwrap_order_by(clause):

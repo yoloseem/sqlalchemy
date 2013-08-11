@@ -5,21 +5,12 @@
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
 """defines genericized SQL types, each represented by a subclass of
-:class:`~sqlalchemy.types.AbstractType`.  Dialects define further subclasses
+:class:`~sqlalchemy.types.TypeEngine`.  Dialects define further subclasses
 of these types.
 
 For more information see the SQLAlchemy documentation on types.
 
 """
-
-__all__ = ['TypeEngine', 'TypeDecorator', 'AbstractType', 'UserDefinedType',
-            'INT', 'CHAR', 'VARCHAR', 'NCHAR', 'NVARCHAR', 'TEXT', 'Text',
-            'FLOAT', 'NUMERIC', 'REAL', 'DECIMAL', 'TIMESTAMP', 'DATETIME',
-            'CLOB', 'BLOB', 'BINARY', 'VARBINARY', 'BOOLEAN', 'BIGINT',
-            'SMALLINT', 'INTEGER', 'DATE', 'TIME', 'String', 'Integer',
-            'SmallInteger', 'BigInteger', 'Numeric', 'Float', 'DateTime',
-            'Date', 'Time', 'LargeBinary', 'Binary', 'Boolean', 'Unicode',
-            'Concatenable', 'UnicodeText', 'PickleType', 'Interval', 'Enum']
 
 
 from .. import exc, util
@@ -330,7 +321,8 @@ class TypeEngine(Visitable):
         Given an operator and value, gives the type a chance
         to return a type which the value should be coerced into.
 
-        The default behavior here is conservative; if the right-hand
+        The default implementation is provided by :class:`.StandardSQLOperators`.
+        Its behavior is conservative; if the right-hand
         side is already coerced into a SQL type based on its
         Python type, it is usually left alone.
 
@@ -343,12 +335,7 @@ class TypeEngine(Visitable):
         end-user customization of this behavior.
 
         """
-        _coerced_type = _type_map.get(type(value), NULLTYPE)
-        if _coerced_type is NULLTYPE or _coerced_type._type_affinity \
-            is self._type_affinity:
-            return self
-        else:
-            return _coerced_type
+        raise NotImplementedError()
 
     def _compare_type_affinity(self, other):
         return self._type_affinity is other._type_affinity
@@ -1004,3 +991,30 @@ def adapt_type(typeobj, colspecs):
     if (issubclass(typeobj.__class__, impltype)):
         return typeobj
     return typeobj.adapt(impltype)
+
+
+class _DateAffinity(object):
+    """Mixin date/time specific expression adaptations.
+
+    Rules are implemented within Date,Time,Interval,DateTime, Numeric,
+    Integer. Based on http://www.postgresql.org/docs/current/static
+    /functions-datetime.html.
+
+    """
+
+    @property
+    def _expression_adaptations(self):
+        raise NotImplementedError()
+
+    class Comparator(TypeEngine.Comparator):
+        _blank_dict = util.immutabledict()
+
+        def _adapt_expression(self, op, other_comparator):
+            othertype = other_comparator.type._type_affinity
+            return op, \
+                    self.type._expression_adaptations.get(op, self._blank_dict).\
+                    get(othertype, NULLTYPE)
+    comparator_factory = Comparator
+
+
+

@@ -31,9 +31,11 @@ as components in SQL expressions.
 import re
 import inspect
 from .. import exc, util, event, events, inspection
-from . import visitors, util as sqlutil, types as sqltypes
+from . import visitors, types_base as sqltypes_base
 from . import selectable, elements
 from .base import SchemaItem
+from ..util import topological
+
 import collections
 import sqlalchemy
 from . import ddl
@@ -448,7 +450,7 @@ class Table(SchemaItem, selectable.TableClause):
         for col in self.primary_key:
             if col.autoincrement and \
                 col.type._type_affinity is not None and \
-                issubclass(col.type._type_affinity, sqltypes.Integer) and \
+                col.type._type_affinity.python_type is int and \
                 (not col.foreign_keys or col.autoincrement == 'ignore_fk') and \
                 isinstance(col.default, (type(None), Sequence)) and \
                 (col.server_default is None or col.server_default.reflected):
@@ -882,9 +884,9 @@ class Column(SchemaItem, elements.ColumnClause):
         if args:
             coltype = args[0]
 
-            if (isinstance(coltype, sqltypes.TypeEngine) or
+            if (isinstance(coltype, sqltypes_base.TypeEngine) or
                 (isinstance(coltype, type) and
-                 issubclass(coltype, sqltypes.TypeEngine))):
+                 issubclass(coltype, sqltypes_base.TypeEngine))):
                 if type_ is not None:
                     raise exc.ArgumentError(
                         "May not pass type_ positionally and as a keyword.")
@@ -910,7 +912,7 @@ class Column(SchemaItem, elements.ColumnClause):
         if '_proxies' in kwargs:
             self._proxies = kwargs.pop('_proxies')
         # otherwise, add DDL-related events
-        elif isinstance(self.type, sqltypes.SchemaType):
+        elif isinstance(self.type, SchemaType):
             self.type._set_parent_with_dispatch(self)
 
         if self.default is not None:
@@ -1076,7 +1078,7 @@ class Column(SchemaItem, elements.ColumnClause):
             [c.copy(**kw) for c in self.foreign_keys if not c.constraint]
 
         type_ = self.type
-        if isinstance(type_, sqltypes.SchemaType):
+        if isinstance(type_, SchemaType):
             type_ = type_.copy(**kw)
 
         c = self._constructor(
@@ -1452,7 +1454,7 @@ class ForeignKey(SchemaItem):
 
     def _set_target_column(self, column):
         # propagate TypeEngine to parent if it didn't have one
-        if isinstance(self.parent.type, sqltypes.NullType):
+        if isinstance(self.parent.type, sqltypes_base.NullType):
             self.parent.type = column.type
 
         # super-edgy case, if other FKs point to our column,
@@ -1461,7 +1463,7 @@ class ForeignKey(SchemaItem):
             fk_key = (self.parent.table.key, self.parent.key)
             if fk_key in self.parent.table.metadata._fk_memos:
                 for fk in self.parent.table.metadata._fk_memos[fk_key]:
-                    if isinstance(fk.parent.type, sqltypes.NullType):
+                    if isinstance(fk.parent.type, sqltypes_base.NullType):
                         fk.parent.type = column.type
 
         self.column = column
@@ -2171,7 +2173,7 @@ class CheckConstraint(Constraint):
         if table is not None:
             self._set_parent_with_dispatch(table)
         elif _autoattach:
-            cols = sqlutil.find_columns(self.sqltext)
+            cols = elements.find_columns(self.sqltext)
             tables = set([c.table for c in cols
                         if isinstance(c.table, Table)])
             if len(tables) == 1:
@@ -2740,7 +2742,7 @@ class MetaData(SchemaItem):
             :meth:`.Inspector.sorted_tables`
 
         """
-        return sqlutil.sort_tables(self.tables.values())
+        return sort_tables(self.tables.values())
 
     def reflect(self, bind=None, schema=None, views=False, only=None):
         """Load all available table definitions from the database.
@@ -2962,7 +2964,6 @@ class ThreadLocalMetaData(MetaData):
                 e.dispose()
 
 
-
 def _bind_or_error(schemaitem, msg=None):
     bind = schemaitem.bind
     if not bind:
@@ -2986,3 +2987,131 @@ def _bind_or_error(schemaitem, msg=None):
                    (item, bindable)
         raise exc.UnboundExecutionError(msg)
     return bind
+
+class SchemaType(events.SchemaEventTarget):
+    """Mark a type as possibly requiring schema-level DDL for usage.
+
+    Supports types that must be explicitly created/dropped (i.e. PG ENUM type)
+    as well as types that are complimented by table or schema level
+    constraints, triggers, and other rules.
+
+    :class:`.SchemaType` classes can also be targets for the
+    :meth:`.DDLEvents.before_parent_attach` and
+    :meth:`.DDLEvents.after_parent_attach` events, where the events fire off
+    surrounding the association of the type object with a parent
+    :class:`.Column`.
+
+    .. seealso::
+
+        :class:`.Enum`
+
+        :class:`.Boolean`
+
+
+    """
+
+    def __init__(self, **kw):
+        self.name = kw.pop('name', None)
+        self.quote = kw.pop('quote', None)
+        self.schema = kw.pop('schema', None)
+        self.metadata = kw.pop('metadata', None)
+        self.inherit_schema = kw.pop('inherit_schema', False)
+        if self.metadata:
+            event.listen(
+                self.metadata,
+                "before_create",
+                util.portable_instancemethod(self._on_metadata_create)
+            )
+            event.listen(
+                self.metadata,
+                "after_drop",
+                util.portable_instancemethod(self._on_metadata_drop)
+            )
+
+    def _set_parent(self, column):
+        column._on_table_attach(util.portable_instancemethod(self._set_table))
+
+    def _set_table(self, column, table):
+        if self.inherit_schema:
+            self.schema = table.schema
+
+        event.listen(
+            table,
+            "before_create",
+              util.portable_instancemethod(
+                    self._on_table_create)
+        )
+        event.listen(
+            table,
+            "after_drop",
+            util.portable_instancemethod(self._on_table_drop)
+        )
+        if self.metadata is None:
+            # TODO: what's the difference between self.metadata
+            # and table.metadata here ?
+            event.listen(
+                table.metadata,
+                "before_create",
+                util.portable_instancemethod(self._on_metadata_create)
+            )
+            event.listen(
+                table.metadata,
+                "after_drop",
+                util.portable_instancemethod(self._on_metadata_drop)
+            )
+
+    def copy(self, **kw):
+        return self.adapt(self.__class__)
+
+    def adapt(self, impltype, **kw):
+        schema = kw.pop('schema', self.schema)
+        metadata = kw.pop('metadata', self.metadata)
+        return impltype(name=self.name,
+                    quote=self.quote,
+                    schema=schema,
+                    metadata=metadata,
+                    inherit_schema=self.inherit_schema,
+                    **kw
+                    )
+
+    @property
+    def bind(self):
+        return self.metadata and self.metadata.bind or None
+
+    def create(self, bind=None, checkfirst=False):
+        """Issue CREATE ddl for this type, if applicable."""
+
+        if bind is None:
+            bind = _bind_or_error(self)
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t.create(bind=bind, checkfirst=checkfirst)
+
+    def drop(self, bind=None, checkfirst=False):
+        """Issue DROP ddl for this type, if applicable."""
+
+        if bind is None:
+            bind = _bind_or_error(self)
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t.drop(bind=bind, checkfirst=checkfirst)
+
+    def _on_table_create(self, target, bind, **kw):
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t._on_table_create(target, bind, **kw)
+
+    def _on_table_drop(self, target, bind, **kw):
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t._on_table_drop(target, bind, **kw)
+
+    def _on_metadata_create(self, target, bind, **kw):
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t._on_metadata_create(target, bind, **kw)
+
+    def _on_metadata_drop(self, target, bind, **kw):
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t._on_metadata_drop(target, bind, **kw)

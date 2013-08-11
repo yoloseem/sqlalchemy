@@ -6,7 +6,6 @@
 
 """Routines to handle CREATE/DROP workflow."""
 
-from . import util as sql_util
 from .. import util
 from . import elements
 from .base import Executable, _generative, SchemaVisitor
@@ -664,7 +663,7 @@ class SchemaGenerator(DDLBase):
             tables = self.tables
         else:
             tables = list(metadata.tables.values())
-        collection = [t for t in sql_util.sort_tables(tables)
+        collection = [t for t in sort_tables(tables)
                         if self._can_create_table(t)]
         seq_coll = [s for s in metadata._sequences.values()
                         if s.column is None and self._can_create_sequence(s)]
@@ -735,7 +734,7 @@ class SchemaDropper(DDLBase):
 
         collection = [
             t
-            for t in reversed(sql_util.sort_tables(tables))
+            for t in reversed(sort_tables(tables))
             if self._can_drop_table(t)
         ]
 
@@ -802,3 +801,35 @@ class SchemaDropper(DDLBase):
         if not drop_ok and not self._can_drop_sequence(sequence):
             return
         self.connection.execute(DropSequence(sequence))
+
+def sort_tables(tables, skip_fn=None, extra_dependencies=None):
+    """sort a collection of Table objects in order of
+                their foreign-key dependency."""
+
+    tables = list(tables)
+    tuples = []
+    if extra_dependencies is not None:
+        tuples.extend(extra_dependencies)
+
+    def visit_foreign_key(fkey):
+        if fkey.use_alter:
+            return
+        elif skip_fn and skip_fn(fkey):
+            return
+        parent_table = fkey.column.table
+        if parent_table in tables:
+            child_table = fkey.parent.table
+            if parent_table is not child_table:
+                tuples.append((parent_table, child_table))
+
+    for table in tables:
+        visitors.traverse(table,
+                            {'schema_visitor': True},
+                            {'foreign_key': visit_foreign_key})
+
+        tuples.extend(
+            [parent, table] for parent in table._extra_dependencies
+        )
+
+    return list(topological.sort(tuples, tables))
+

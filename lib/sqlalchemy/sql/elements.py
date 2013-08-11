@@ -2,6 +2,7 @@ from .. import util, exc, inspection
 from . import types_base as sqltypes
 from . import operators
 from .visitors import Visitable
+from . import visitors
 from .annotation import Annotated
 import itertools
 from .base import Executable, PARSE_AUTOCOMMIT, Immutable, Generative, _generative
@@ -107,6 +108,14 @@ def _labeled(element):
         return element.label(None)
     else:
         return element
+
+
+def find_columns(clause):
+    """locate Column objects within the given expression."""
+
+    cols = util.column_set()
+    visitors.traverse(clause, {}, {'column': cols.add})
+    return cols
 
 
 # there is some inconsistency here between the usage of

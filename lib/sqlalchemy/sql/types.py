@@ -23,9 +23,10 @@ __all__ = ['TypeEngine', 'TypeDecorator', 'UserDefinedType',
 import datetime as dt
 import codecs
 
-from .types_base import TypeEngine, TypeDecorator, UserDefinedType, NULLTYPE
-from .. import exc, util, processors, events, event
-from . import operators
+from .types_base import TypeEngine, TypeDecorator, UserDefinedType, \
+            NULLTYPE, _DateAffinity, NullType
+from .. import exc, util, processors
+from . import operators, schema, elements
 from ..util import pickle
 import decimal
 default = util.importlater("sqlalchemy.engine", "default")
@@ -35,11 +36,41 @@ if util.jython:
     import array
 
 
+class StandardSQLOperators(TypeEngine):
+    class Comparator(elements._DefaultColumnComparator, TypeEngine.Comparator):
+        pass
+
+    def coerce_compared_value(self, op, value):
+        """Suggest a type for a 'coerced' Python value in an expression.
+
+        Given an operator and value, gives the type a chance
+        to return a type which the value should be coerced into.
+
+        The default behavior here is conservative; if the right-hand
+        side is already coerced into a SQL type based on its
+        Python type, it is usually left alone.
+
+        End-user functionality extension here should generally be via
+        :class:`.TypeDecorator`, which provides more liberal behavior in that
+        it defaults to coercing the other side of the expression into this
+        type, thus applying special Python conversions above and beyond those
+        needed by the DBAPI to both ides. It also provides the public method
+        :meth:`.TypeDecorator.coerce_compared_value` which is intended for
+        end-user customization of this behavior.
+
+        """
+        _coerced_type = _type_map.get(type(value), NULLTYPE)
+        if _coerced_type is NULLTYPE or _coerced_type._type_affinity \
+            is self._type_affinity:
+            return self
+        else:
+            return _coerced_type
+
 class Concatenable(object):
     """A mixin that marks a type as supporting 'concatenation',
     typically strings."""
 
-    class Comparator(TypeEngine.Comparator):
+    class Comparator(StandardSQLOperators):
         def _adapt_expression(self, op, other_comparator):
             if op is operators.add and isinstance(other_comparator,
                     (Concatenable.Comparator, NullType.Comparator)):
@@ -50,31 +81,7 @@ class Concatenable(object):
     comparator_factory = Comparator
 
 
-class _DateAffinity(object):
-    """Mixin date/time specific expression adaptations.
-
-    Rules are implemented within Date,Time,Interval,DateTime, Numeric,
-    Integer. Based on http://www.postgresql.org/docs/current/static
-    /functions-datetime.html.
-
-    """
-
-    @property
-    def _expression_adaptations(self):
-        raise NotImplementedError()
-
-    class Comparator(TypeEngine.Comparator):
-        _blank_dict = util.immutabledict()
-
-        def _adapt_expression(self, op, other_comparator):
-            othertype = other_comparator.type._type_affinity
-            return op, \
-                    self.type._expression_adaptations.get(op, self._blank_dict).\
-                    get(othertype, NULLTYPE)
-    comparator_factory = Comparator
-
-
-class String(Concatenable, TypeEngine):
+class String(Concatenable, StandardSQLOperators):
     """The base for all string and character types.
 
     In SQL, corresponds to VARCHAR.  Can also take Python unicode objects
@@ -345,7 +352,7 @@ class UnicodeText(Text):
         super(UnicodeText, self).__init__(length=length, **kwargs)
 
 
-class Integer(_DateAffinity, TypeEngine):
+class Integer(_DateAffinity, StandardSQLOperators):
     """A type for ``int`` integers."""
 
     __visit_name__ = 'integer'
@@ -387,6 +394,7 @@ class Integer(_DateAffinity, TypeEngine):
         }
 
 
+
 class SmallInteger(Integer):
     """A type for smaller ``int`` integers.
 
@@ -409,7 +417,7 @@ class BigInteger(Integer):
     __visit_name__ = 'big_integer'
 
 
-class Numeric(_DateAffinity, TypeEngine):
+class Numeric(_DateAffinity, StandardSQLOperators):
     """A type for fixed precision numbers.
 
     Typically generates DECIMAL or NUMERIC.  Returns
@@ -623,7 +631,7 @@ class Float(Numeric):
         }
 
 
-class DateTime(_DateAffinity, TypeEngine):
+class DateTime(_DateAffinity, StandardSQLOperators):
     """A type for ``datetime.datetime()`` objects.
 
     Date and time types return objects from the Python ``datetime``
@@ -667,7 +675,7 @@ class DateTime(_DateAffinity, TypeEngine):
         }
 
 
-class Date(_DateAffinity, TypeEngine):
+class Date(_DateAffinity, StandardSQLOperators):
     """A type for ``datetime.date()`` objects."""
 
     __visit_name__ = 'date'
@@ -704,7 +712,7 @@ class Date(_DateAffinity, TypeEngine):
         }
 
 
-class Time(_DateAffinity, TypeEngine):
+class Time(_DateAffinity, StandardSQLOperators):
     """A type for ``datetime.time()`` objects."""
 
     __visit_name__ = 'time'
@@ -733,7 +741,7 @@ class Time(_DateAffinity, TypeEngine):
         }
 
 
-class _Binary(TypeEngine):
+class _Binary(StandardSQLOperators):
     """Define base behavior for binary types."""
 
     def __init__(self, length=None):
@@ -749,7 +757,6 @@ class _Binary(TypeEngine):
         DBAPIBinary = dialect.dbapi.Binary
 
         def process(value):
-            x = self
             if value is not None:
                 return DBAPIBinary(value)
             else:
@@ -829,136 +836,9 @@ class Binary(LargeBinary):
         LargeBinary.__init__(self, *arg, **kw)
 
 
-class SchemaType(events.SchemaEventTarget):
-    """Mark a type as possibly requiring schema-level DDL for usage.
-
-    Supports types that must be explicitly created/dropped (i.e. PG ENUM type)
-    as well as types that are complimented by table or schema level
-    constraints, triggers, and other rules.
-
-    :class:`.SchemaType` classes can also be targets for the
-    :meth:`.DDLEvents.before_parent_attach` and
-    :meth:`.DDLEvents.after_parent_attach` events, where the events fire off
-    surrounding the association of the type object with a parent
-    :class:`.Column`.
-
-    .. seealso::
-
-        :class:`.Enum`
-
-        :class:`.Boolean`
 
 
-    """
-
-    def __init__(self, **kw):
-        self.name = kw.pop('name', None)
-        self.quote = kw.pop('quote', None)
-        self.schema = kw.pop('schema', None)
-        self.metadata = kw.pop('metadata', None)
-        self.inherit_schema = kw.pop('inherit_schema', False)
-        if self.metadata:
-            event.listen(
-                self.metadata,
-                "before_create",
-                util.portable_instancemethod(self._on_metadata_create)
-            )
-            event.listen(
-                self.metadata,
-                "after_drop",
-                util.portable_instancemethod(self._on_metadata_drop)
-            )
-
-    def _set_parent(self, column):
-        column._on_table_attach(util.portable_instancemethod(self._set_table))
-
-    def _set_table(self, column, table):
-        if self.inherit_schema:
-            self.schema = table.schema
-
-        event.listen(
-            table,
-            "before_create",
-              util.portable_instancemethod(
-                    self._on_table_create)
-        )
-        event.listen(
-            table,
-            "after_drop",
-            util.portable_instancemethod(self._on_table_drop)
-        )
-        if self.metadata is None:
-            # TODO: what's the difference between self.metadata
-            # and table.metadata here ?
-            event.listen(
-                table.metadata,
-                "before_create",
-                util.portable_instancemethod(self._on_metadata_create)
-            )
-            event.listen(
-                table.metadata,
-                "after_drop",
-                util.portable_instancemethod(self._on_metadata_drop)
-            )
-
-    def copy(self, **kw):
-        return self.adapt(self.__class__)
-
-    def adapt(self, impltype, **kw):
-        schema = kw.pop('schema', self.schema)
-        metadata = kw.pop('metadata', self.metadata)
-        return impltype(name=self.name,
-                    quote=self.quote,
-                    schema=schema,
-                    metadata=metadata,
-                    inherit_schema=self.inherit_schema,
-                    **kw
-                    )
-
-    @property
-    def bind(self):
-        return self.metadata and self.metadata.bind or None
-
-    def create(self, bind=None, checkfirst=False):
-        """Issue CREATE ddl for this type, if applicable."""
-
-        if bind is None:
-            bind = schema._bind_or_error(self)
-        t = self.dialect_impl(bind.dialect)
-        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
-            t.create(bind=bind, checkfirst=checkfirst)
-
-    def drop(self, bind=None, checkfirst=False):
-        """Issue DROP ddl for this type, if applicable."""
-
-        if bind is None:
-            bind = schema._bind_or_error(self)
-        t = self.dialect_impl(bind.dialect)
-        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
-            t.drop(bind=bind, checkfirst=checkfirst)
-
-    def _on_table_create(self, target, bind, **kw):
-        t = self.dialect_impl(bind.dialect)
-        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
-            t._on_table_create(target, bind, **kw)
-
-    def _on_table_drop(self, target, bind, **kw):
-        t = self.dialect_impl(bind.dialect)
-        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
-            t._on_table_drop(target, bind, **kw)
-
-    def _on_metadata_create(self, target, bind, **kw):
-        t = self.dialect_impl(bind.dialect)
-        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
-            t._on_metadata_create(target, bind, **kw)
-
-    def _on_metadata_drop(self, target, bind, **kw):
-        t = self.dialect_impl(bind.dialect)
-        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
-            t._on_metadata_drop(target, bind, **kw)
-
-
-class Enum(String, SchemaType):
+class Enum(String, schema.SchemaType):
     """Generic Enum Type.
 
     The Enum type provides a set of possible string values which the
@@ -1054,7 +934,7 @@ class Enum(String, SchemaType):
                         length=length,
                         convert_unicode=convert_unicode,
                         )
-        SchemaType.__init__(self, **kw)
+        schema.SchemaType.__init__(self, **kw)
 
     def __repr__(self):
         return util.generic_repr(self, [
@@ -1068,7 +948,7 @@ class Enum(String, SchemaType):
 
     def _set_table(self, column, table):
         if self.native_enum:
-            SchemaType._set_table(self, column, table)
+            schema.SchemaType._set_table(self, column, table)
 
         e = schema.CheckConstraint(
                         column.in_(self.enums),
@@ -1176,7 +1056,7 @@ class PickleType(TypeDecorator):
             return x == y
 
 
-class Boolean(TypeEngine, SchemaType):
+class Boolean(StandardSQLOperators, schema.SchemaType):
     """A bool datatype.
 
     Boolean typically uses BOOLEAN or SMALLINT on the DDL side, and on
