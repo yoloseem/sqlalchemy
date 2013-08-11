@@ -11,13 +11,14 @@ SQL tables and derived rowsets.
 
 from .elements import ClauseElement, TextClause, _clone, ClauseList, \
         _literal_as_text, _interpret_as_column_or_from, ScalarSelect, _expand_cloned,\
-        _select_iterables, and_
+        _select_iterables, and_, _anonymous_label, _clause_element_as_expr
 from .base import Immutable, Executable, _generative, \
             ColumnCollection, ColumnSet, _from_objects
 from .. import inspection
 from .. import util
 from .. import exc
 from operator import attrgetter
+from . import operators
 import operator
 from .annotation import Annotated
 import itertools
@@ -38,7 +39,6 @@ def _interpret_as_select(element):
     if not isinstance(element, Select):
         element = element.select()
     return element
-
 
 def subquery(alias, *args, **kwargs):
     """Return an :class:`.Alias` object derived
@@ -622,11 +622,12 @@ class Join(FromClause):
     def self_group(self, against=None):
         return FromGrouping(self)
 
-    def _populate_column_collection(self):
+    @util.dependencies("sqlalchemy.sql.util")
+    def _populate_column_collection(self, util):
         columns = [c for c in self.left.columns] + \
                         [c for c in self.right.columns]
 
-        self.primary_key.extend(sqlutil.reduce_columns(
+        self.primary_key.extend(util.reduce_columns(
                 (c for c in columns if c.primary_key), self.onclause))
         self._columns.update((col._label, col) for col in columns)
         self.foreign_keys.update(itertools.chain(
@@ -659,7 +660,7 @@ class Join(FromClause):
             left_right = left.right
         else:
             left_right = None
-        return self.join_condition(left, right, a_subset=left_right)
+        return self._join_condition(left, right, a_subset=left_right)
 
     @classmethod
     def _join_condition(cls, a, b, ignore_nonexistent_tables=False,
@@ -785,7 +786,8 @@ class Join(FromClause):
     def bind(self):
         return self.left.bind or self.right.bind
 
-    def alias(self, name=None, flat=False):
+    @util.dependencies("sqlalchemy.sql.util")
+    def alias(self, sqlutil, name=None, flat=False):
         """return an alias of this :class:`.Join`.
 
         The default behavior here is to first produce a SELECT

@@ -1,14 +1,10 @@
-# sqlalchemy/types.py
+# sqlalchemy/types_base.py
 # Copyright (C) 2005-2013 the SQLAlchemy authors and contributors <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
-"""defines genericized SQL types, each represented by a subclass of
-:class:`~sqlalchemy.types.TypeEngine`.  Dialects define further subclasses
-of these types.
-
-For more information see the SQLAlchemy documentation on types.
+"""Base types API.
 
 """
 
@@ -19,8 +15,18 @@ from .visitors import Visitable
 
 NoneType = type(None)
 
+# these are back-assigned by sqltypes.
+BOOLEANTYPE = None
+INTEGERTYPE = None
+NULLTYPE = None
+STRINGTYPE = None
+
 class TypeEngine(Visitable):
     """Base for built-in types."""
+
+    _sqla_type = True
+    _isnull = False
+    _is_schema = False
 
     class Comparator(operators.ColumnOperators):
         """Base class for custom comparison operations defined at the
@@ -918,46 +924,8 @@ class Variant(TypeDecorator):
         mapping[dialect_name] = type_
         return Variant(self.impl, mapping)
 
-class NullType(TypeEngine):
-    """An unknown type.
-
-    :class:`.NullType` is used as a default type for those cases where
-    a type cannot be determined, including:
-
-    * During table reflection, when the type of a column is not recognized
-      by the :class:`.Dialect`
-    * When constructing SQL expressions using plain Python objects of
-      unknown types (e.g. ``somecolumn == my_special_object``)
-    * When a new :class:`.Column` is created, and the given type is passed
-      as ``None`` or is not passed at all.
-
-    The :class:`.NullType` can be used within SQL expression invocation
-    without issue, it just has no behavior either at the expression construction
-    level or at the bind-parameter/result processing level.  :class:`.NullType`
-    will result in a :class:`.CompileException` if the compiler is asked to render
-    the type itself, such as if it is used in a :func:`.cast` operation
-    or within a schema creation operation such as that invoked by
-    :meth:`.MetaData.create_all` or the :class:`.CreateTable` construct.
-
-    """
-    __visit_name__ = 'null'
-
-    class Comparator(TypeEngine.Comparator):
-        def _adapt_expression(self, op, other_comparator):
-            if isinstance(other_comparator, NullType.Comparator) or \
-                not operators.is_commutative(op):
-                return op, self.expr.type
-            else:
-                return other_comparator._adapt_expression(op, self)
-    comparator_factory = Comparator
-
-NullTypeEngine = NullType
-
-NULLTYPE = NullType()
-
 def _reconstitute_comparator(expression):
     return expression.comparator
-
 
 
 def to_instance(typeobj, *arg, **kw):

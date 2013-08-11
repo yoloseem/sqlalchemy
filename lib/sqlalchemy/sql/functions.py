@@ -7,7 +7,7 @@
 """SQL function API, factories, and built-in functions.
 
 """
-from . import types as sqltypes, schema
+from . import sqltypes, schema
 from .base import Executable
 from .elements import ClauseList, cast, extract, _literal_as_binds, \
         literal_column, _type_from_args, ColumnElement, _clone,\

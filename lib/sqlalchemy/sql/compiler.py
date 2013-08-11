@@ -23,7 +23,7 @@ To generate user-defined SQL strings, see
 """
 
 import re
-from . import schema, types, operators, functions, \
+from . import schema, sqltypes, operators, functions, \
         util as sql_util, visitors, elements, selectable
 from .. import util, exc
 import decimal
@@ -830,7 +830,7 @@ class SQLCompiler(Compiled):
 
     @util.memoized_property
     def _like_percent_literal(self):
-        return elements.literal_column("'%'", type_=types.String())
+        return elements.literal_column("'%'", type_=sqltypes.String())
 
     def visit_contains_op_binary(self, binary, operator, **kw):
         binary = binary._clone()

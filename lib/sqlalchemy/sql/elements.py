@@ -1,7 +1,7 @@
 from __future__ import unicode_literals
 
 from .. import util, exc, inspection
-from . import types_base as sqltypes
+from . import type_api
 from . import operators
 from .visitors import Visitable
 from . import visitors
@@ -438,7 +438,7 @@ def type_coerce(expr, type_):
         )
 
     """
-    type_ = sqltypes.to_instance(type_)
+    type_ = type_api.to_instance(type_)
 
     if hasattr(expr, '__clause_expr__'):
         return type_coerce(expr.__clause_expr__())
@@ -515,10 +515,10 @@ def _const_expr(element):
 
 def _type_from_args(args):
     for a in args:
-        if not isinstance(a.type, sqltypes.NullType):
+        if not a.type._isnull:
             return a.type
     else:
-        return sqltypes.NullType
+        return type_api.NULLTYPE
 
 
 def _corresponding_column_or_error(fromclause, column,
@@ -927,7 +927,7 @@ class ColumnElement(ClauseElement, operators.ColumnOperators):
 
     @util.memoized_property
     def type(self):
-        return sqltypes.NULLTYPE
+        return type_api.NULLTYPE
 
     @util.memoized_property
     def comparator(self):
@@ -1008,10 +1008,11 @@ class ColumnElement(ClauseElement, operators.ColumnOperators):
                 key = self.anon_label
         else:
             key = name
-        co = ColumnClause(_as_truncated(name) if name_is_truncatable else name,
-                            selectable,
-                            type_=getattr(self,
-                          'type', None))
+        co = ColumnClause(
+                _as_truncated(name) if name_is_truncatable else name,
+                type_=getattr(self, 'type', None),
+                _selectable=selectable
+            )
         co._proxies = [self]
         if selectable._is_clone_of is not None:
             co._is_clone_of = \
@@ -1196,8 +1197,8 @@ class BindParameter(ColumnElement):
                     _compared_to_type.coerce_compared_value(
                         _compared_to_operator, value)
             else:
-                self.type = sqltypes._type_map.get(type(value),
-                        sqltypes.NULLTYPE)
+                self.type = type_api._type_map.get(type(value),
+                        type_api.NULLTYPE)
         elif isinstance(type_, type):
             self.type = type_()
         else:
@@ -1407,10 +1408,10 @@ class TextClause(Executable, ClauseElement):
                     {'autocommit': autocommit})
         if typemap is not None:
             for key in typemap:
-                typemap[key] = sqltypes.to_instance(typemap[key])
+                typemap[key] = type_api.to_instance(typemap[key])
 
         def repl(m):
-            self.bindparams[m.group(1)] = bindparam(m.group(1))
+            self.bindparams[m.group(1)] = BindParameter(m.group(1))
             return ':%s' % m.group(1)
 
         # scan the string and search for bind parameter names, add them
@@ -1426,7 +1427,7 @@ class TextClause(Executable, ClauseElement):
         if self.typemap is not None and len(self.typemap) == 1:
             return list(self.typemap)[0]
         else:
-            return sqltypes.NULLTYPE
+            return type_api.NULLTYPE
 
     @property
     def comparator(self):
@@ -1456,7 +1457,7 @@ class Null(ColumnElement):
     __visit_name__ = 'null'
 
     def __init__(self):
-        self.type = sqltypes.NULLTYPE
+        self.type = type_api.NULLTYPE
 
     def compare(self, other):
         return isinstance(other, Null)
@@ -1472,7 +1473,7 @@ class False_(ColumnElement):
     __visit_name__ = 'false'
 
     def __init__(self):
-        self.type = sqltypes.BOOLEANTYPE
+        self.type = type_api.BOOLEANTYPE
 
     def compare(self, other):
         return isinstance(other, False_)
@@ -1487,7 +1488,7 @@ class True_(ColumnElement):
     __visit_name__ = 'true'
 
     def __init__(self):
-        self.type = sqltypes.BOOLEANTYPE
+        self.type = type_api.BOOLEANTYPE
 
     def compare(self, other):
         return isinstance(other, True_)
@@ -1574,8 +1575,8 @@ class BooleanClauseList(ClauseList, ColumnElement):
 
     def __init__(self, *clauses, **kwargs):
         super(BooleanClauseList, self).__init__(*clauses, **kwargs)
-        self.type = sqltypes.to_instance(kwargs.get('type_',
-                sqltypes.Boolean))
+        self.type = type_api.to_instance(kwargs.get('type_',
+                type_api.BOOLEANTYPE))
 
     @property
     def _select_iterable(self):
@@ -1714,7 +1715,7 @@ class Cast(ColumnElement):
     __visit_name__ = 'cast'
 
     def __init__(self, clause, totype, **kwargs):
-        self.type = sqltypes.to_instance(totype)
+        self.type = type_api.to_instance(totype)
         self.clause = _literal_as_binds(clause, None)
         self.typeclause = TypeClause(self.type)
 
@@ -1740,7 +1741,7 @@ class Extract(ColumnElement):
     __visit_name__ = 'extract'
 
     def __init__(self, field, expr, **kwargs):
-        self.type = sqltypes.Integer()
+        self.type = type_api.Integer()
         self.field = field
         self.expr = _literal_as_binds(expr, None)
 
@@ -1773,7 +1774,7 @@ class UnaryExpression(ColumnElement):
 
         self.element = _literal_as_text(element).\
                     self_group(against=self.operator or self.modifier)
-        self.type = sqltypes.to_instance(type_)
+        self.type = type_api.to_instance(type_)
         self.negate = negate
 
     @classmethod
@@ -1928,7 +1929,7 @@ class BinaryExpression(ColumnElement):
         self.left = _literal_as_text(left).self_group(against=operator)
         self.right = _literal_as_text(right).self_group(against=operator)
         self.operator = operator
-        self.type = sqltypes.to_instance(type_)
+        self.type = type_api.to_instance(type_)
         self.negate = negate
 
         if modifiers is None:
@@ -1990,7 +1991,7 @@ class BinaryExpression(ColumnElement):
                 self.right,
                 self.negate,
                 negate=self.operator,
-                type_=sqltypes.BOOLEANTYPE,
+                type_=type_api.BOOLEANTYPE,
                 modifiers=self.modifiers)
         else:
             return super(BinaryExpression, self)._negate()
@@ -2009,7 +2010,7 @@ class Exists(UnaryExpression):
             s = select(*args, **kwargs).as_scalar().self_group()
 
         UnaryExpression.__init__(self, s, operator=operators.exists,
-                                  type_=sqltypes.Boolean)
+                                  type_=type_api.BOOLEANTYPE)
 
     def select(self, whereclause=None, **params):
         return select([self], whereclause, **params)
@@ -2052,7 +2053,7 @@ class Grouping(ColumnElement):
 
     def __init__(self, element):
         self.element = element
-        self.type = getattr(element, 'type', sqltypes.NULLTYPE)
+        self.type = getattr(element, 'type', type_api.NULLTYPE)
 
     @property
     def _label(self):
@@ -2191,7 +2192,7 @@ class Label(ColumnElement):
 
     @util.memoized_property
     def type(self):
-        return sqltypes.to_instance(
+        return type_api.to_instance(
                     self._type or getattr(self._element, 'type', None)
                 )
 
@@ -2311,7 +2312,7 @@ class ColumnClause(Immutable, ColumnElement):
 
         self.key = self.name = text
         self.table = _selectable
-        self.type = sqltypes.to_instance(type_)
+        self.type = type_api.to_instance(type_)
         self.is_literal = is_literal
 
     def _compare_name_for_result(self, other):
@@ -2401,8 +2402,8 @@ class ColumnClause(Immutable, ColumnElement):
                     _as_truncated(name or self.name) if \
                                     name_is_truncatable else \
                                     (name or self.name),
-                    selectable=selectable,
                     type_=self.type,
+                    _selectable=selectable,
                     is_literal=is_literal
                 )
         if name is None:

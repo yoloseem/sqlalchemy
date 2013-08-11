@@ -47,9 +47,71 @@ from .sql import (
     update,
     )
 
-from .types import *
+from .types import (
+    BIGINT,
+    BINARY,
+    BLOB,
+    BOOLEAN,
+    BigInteger,
+    Binary,
+    Boolean,
+    CHAR,
+    CLOB,
+    DATE,
+    DATETIME,
+    DECIMAL,
+    Date,
+    DateTime,
+    Enum,
+    FLOAT,
+    Float,
+    INT,
+    INTEGER,
+    Integer,
+    Interval,
+    LargeBinary,
+    NCHAR,
+    NVARCHAR,
+    NUMERIC,
+    Numeric,
+    PickleType,
+    REAL,
+    SMALLINT,
+    SmallInteger,
+    String,
+    TEXT,
+    TIME,
+    TIMESTAMP,
+    Text,
+    Time,
+    TypeDecorator,
+    Unicode,
+    UnicodeText,
+    VARBINARY,
+    VARCHAR,
+    )
 
-from .schema import *
+
+from .schema import (
+    CheckConstraint,
+    Column,
+    ColumnDefault,
+    Constraint,
+    DefaultClause,
+    FetchedValue,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    MetaData,
+    PassiveDefault,
+    PrimaryKeyConstraint,
+    Sequence,
+    Table,
+    ThreadLocalMetaData,
+    UniqueConstraint,
+    DDL,
+)
+
 
 from .inspection import inspect
 

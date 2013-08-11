@@ -36,7 +36,7 @@ class Annotated(object):
             try:
                 cls = annotated_classes[element.__class__]
             except KeyError:
-                cls = _new_annotation_type(cls, element.__class__)
+                cls = _new_annotation_type(element.__class__, cls)
             return object.__new__(cls)
 
     def __init__(self, element, values):
@@ -163,9 +163,13 @@ def _shallow_annotate(element, annotations):
     return element
 
 def _new_annotation_type(cls, base_cls):
+    if issubclass(cls, Annotated):
+        return cls
+    elif cls in annotated_classes:
+        return annotated_classes[cls]
     annotated_classes[cls] = anno_cls = type(
-                                    "Annotated%s" % cls.__name__,
-                                    (base_cls, cls), {})
+                                "Annotated%s" % cls.__name__,
+                                (base_cls, cls), {})
     globals()["Annotated%s" % cls.__name__] = anno_cls
     return anno_cls
 

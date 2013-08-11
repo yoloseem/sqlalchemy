@@ -15,7 +15,7 @@ as the base class for their own corresponding classes.
 import re
 import random
 from . import reflection, interfaces, result
-from ..sql import compiler, expression, types as sqltypes
+from ..sql import compiler, expression, sqltypes
 from .. import exc, util, pool, processors
 import codecs
 import weakref

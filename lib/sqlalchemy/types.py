@@ -8,16 +8,18 @@
 
 """
 
-from .sql.types import (
+from .sql.sqltypes import (
     BIGINT,
     BINARY,
     BLOB,
     BOOLEAN,
     BigInteger,
     Binary,
+    Binary as _Binary,
     Boolean,
     CHAR,
     CLOB,
+    Concatenable,
     DATE,
     DATETIME,
     DECIMAL,
@@ -33,6 +35,7 @@ from .sql.types import (
     LargeBinary,
     NCHAR,
     NVARCHAR,
+    NULLTYPE,
     NUMERIC,
     Numeric,
     PickleType,
@@ -46,8 +49,10 @@ from .sql.types import (
     Text,
     Time,
     TypeDecorator,
+    TypeEngine,
     Unicode,
     UnicodeText,
+    UserDefinedType,
     VARBINARY,
     VARCHAR,
     )

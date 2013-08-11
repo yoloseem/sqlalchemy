@@ -26,9 +26,12 @@ from .sql.schema import (
     Table,
     ThreadLocalMetaData,
     UniqueConstraint,
+    _get_table_key,
+    ColumnCollectionConstraint
     )
+
 
 from .sql.ddl import (
     DDL,
-
+    _CreateDropBase
 )

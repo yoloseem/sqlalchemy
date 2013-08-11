@@ -9,11 +9,11 @@
 
 from .. import exc, util
 from . import operators
-from .types_base import TypeEngine
+from . import type_api
 from .elements import BindParameter, True_, False_, BinaryExpression, \
         Null, _const_expr, _clause_element_as_expr, ScalarSelect, \
         ClauseList, ColumnElement, TextClause, UnaryExpression, \
-        collate, null
+        collate, null, _is_literal
 from .selectable import SelectBase, Alias, Selectable
 
 class _DefaultColumnComparator(operators.ColumnOperators):
@@ -23,8 +23,6 @@ class _DefaultColumnComparator(operators.ColumnOperators):
     of all operations.
 
     """
-
-    BOOLEANTYPE = None
 
     @util.memoized_property
     def type(self):
@@ -79,7 +77,7 @@ class _DefaultColumnComparator(operators.ColumnOperators):
                 return BinaryExpression(expr,
                                 obj,
                                 op,
-                                type_=self.BOOLEANTYPE,
+                                type_=type_api.BOOLEANTYPE,
                                 negate=negate, modifiers=kwargs)
             else:
                 # all other None/True/False uses IS, IS NOT
@@ -102,13 +100,13 @@ class _DefaultColumnComparator(operators.ColumnOperators):
             return BinaryExpression(obj,
                             expr,
                             op,
-                            type_=self.BOOLEANTYPE,
+                            type_=type_api.BOOLEANTYPE,
                             negate=negate, modifiers=kwargs)
         else:
             return BinaryExpression(expr,
                             obj,
                             op,
-                            type_=self.BOOLEANTYPE,
+                            type_=type_api.BOOLEANTYPE,
                             negate=negate, modifiers=kwargs)
 
     def _binary_operate(self, expr, op, obj, reverse=False, result_type=None,
@@ -259,7 +257,7 @@ class _DefaultColumnComparator(operators.ColumnOperators):
     def _check_literal(self, expr, operator, other):
         if isinstance(other, (ColumnElement, TextClause)):
             if isinstance(other, BindParameter) and \
-                    isinstance(other.type, sqltypes.NullType):
+                    other.type._isnull:
                 # TODO: perhaps we should not mutate the incoming
                 # bindparam() here and instead make a copy of it.
                 # this might be the only place that we're mutating
@@ -268,7 +266,7 @@ class _DefaultColumnComparator(operators.ColumnOperators):
             return other
         elif hasattr(other, '__clause_element__'):
             other = other.__clause_element__()
-        elif isinstance(other, TypeEngine.Comparator):
+        elif isinstance(other, type_api.TypeEngine.Comparator):
             other = other.expr
 
         if isinstance(other, (SelectBase, Alias)):

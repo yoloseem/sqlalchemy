@@ -19,17 +19,18 @@ from .elements import ClauseElement, ColumnElement,\
   Grouping, ScalarSelect, and_, or_, not_, null, false, true, \
   collate, cast, extract, literal_column, between,\
   case, exists, label, literal, outparam, \
-  tuple_, type_coerce
+  tuple_, type_coerce, ClauseList, _literal_as_text
 
 from .base import ColumnCollection, Generative, Executable
 
 from .selectable import Alias, Join, Select, Selectable, TableClause, \
         CompoundSelect, FromClause, FromGrouping, SelectBase, \
         alias, except_, except_all, intersect, intersect_all, \
-        subquery, union, union_all
+        subquery, union, union_all, HasPrefixes
 
 from .dml import Insert, Update, Delete
 
+from .selectable import _interpret_as_from
 
 __all__ = [
     'Alias', 'ClauseElement', 'ColumnCollection', 'ColumnElement',

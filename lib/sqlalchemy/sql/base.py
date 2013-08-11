@@ -1,7 +1,17 @@
+# sql/base.py
+# Copyright (C) 2005-2013 the SQLAlchemy authors and contributors <see AUTHORS file>
+#
+# This module is part of SQLAlchemy and is released under
+# the MIT License: http://www.opensource.org/licenses/mit-license.php
+
+"""Foundational utilities common to many sql modules.
+
+"""
+
+
 from .. import util, exc
 import itertools
 from . import visitors
-from .. import events
 
 
 PARSE_AUTOCOMMIT = util.symbol('PARSE_AUTOCOMMIT')
@@ -22,7 +32,6 @@ class Immutable(object):
 
 def _from_objects(*elements):
     return itertools.chain(*[element._from_objects for element in elements])
-
 
 @util.decorator
 def _generative(fn, *args, **kw):

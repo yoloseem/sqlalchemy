@@ -4,12 +4,21 @@
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
+"""High level utilities which build upon other modules here.
+
+"""
+
 from .. import exc, util
 from . import elements, schema, adapters, selectable, base
 from .base import _from_objects
 from . import operators, visitors
 from itertools import chain
 from collections import deque
+
+from .adapters import ColumnAdapter, ClauseAdapter
+
+join_condition = util.langhelpers.public_factory(selectable.Join._join_condition)
+from .annotation import _shallow_annotate, _deep_annotate, _deep_deannotate
 
 
 def is_column(col):

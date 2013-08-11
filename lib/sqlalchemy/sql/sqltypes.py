@@ -4,29 +4,24 @@
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
-"""defines genericized SQL types, each represented by a subclass of
-:class:`~sqlalchemy.types.AbstractType`.  Dialects define further subclasses
-of these types.
-
-For more information see the SQLAlchemy documentation on types.
+"""SQL specific types.
 
 """
 
 import datetime as dt
 import codecs
 
-from .types_base import TypeEngine, TypeDecorator, UserDefinedType, \
-            NULLTYPE, NullType, to_instance
+from .type_api import TypeEngine, TypeDecorator, UserDefinedType, to_instance
 from .default_comparator import _DefaultColumnComparator
 from .. import exc, util, processors
-from . import operators, schema
+from . import operators
+from .. import events
 from ..util import pickle
 import decimal
 
 NoneType = type(None)
 if util.jython:
     import array
-
 
 
 class StandardSQLOperators(TypeEngine):
@@ -860,8 +855,136 @@ class Binary(LargeBinary):
 
 
 
+class SchemaType(events.SchemaEventTarget):
+    """Mark a type as possibly requiring schema-level DDL for usage.
 
-class Enum(String, schema.SchemaType):
+    Supports types that must be explicitly created/dropped (i.e. PG ENUM type)
+    as well as types that are complimented by table or schema level
+    constraints, triggers, and other rules.
+
+    :class:`.SchemaType` classes can also be targets for the
+    :meth:`.DDLEvents.before_parent_attach` and
+    :meth:`.DDLEvents.after_parent_attach` events, where the events fire off
+    surrounding the association of the type object with a parent
+    :class:`.Column`.
+
+    .. seealso::
+
+        :class:`.Enum`
+
+        :class:`.Boolean`
+
+
+    """
+    _is_schema = True
+
+    def __init__(self, **kw):
+        self.name = kw.pop('name', None)
+        self.quote = kw.pop('quote', None)
+        self.schema = kw.pop('schema', None)
+        self.metadata = kw.pop('metadata', None)
+        self.inherit_schema = kw.pop('inherit_schema', False)
+        if self.metadata:
+            event.listen(
+                self.metadata,
+                "before_create",
+                util.portable_instancemethod(self._on_metadata_create)
+            )
+            event.listen(
+                self.metadata,
+                "after_drop",
+                util.portable_instancemethod(self._on_metadata_drop)
+            )
+
+    def _set_parent(self, column):
+        column._on_table_attach(util.portable_instancemethod(self._set_table))
+
+    def _set_table(self, column, table):
+        if self.inherit_schema:
+            self.schema = table.schema
+
+        event.listen(
+            table,
+            "before_create",
+              util.portable_instancemethod(
+                    self._on_table_create)
+        )
+        event.listen(
+            table,
+            "after_drop",
+            util.portable_instancemethod(self._on_table_drop)
+        )
+        if self.metadata is None:
+            # TODO: what's the difference between self.metadata
+            # and table.metadata here ?
+            event.listen(
+                table.metadata,
+                "before_create",
+                util.portable_instancemethod(self._on_metadata_create)
+            )
+            event.listen(
+                table.metadata,
+                "after_drop",
+                util.portable_instancemethod(self._on_metadata_drop)
+            )
+
+    def copy(self, **kw):
+        return self.adapt(self.__class__)
+
+    def adapt(self, impltype, **kw):
+        schema = kw.pop('schema', self.schema)
+        metadata = kw.pop('metadata', self.metadata)
+        return impltype(name=self.name,
+                    quote=self.quote,
+                    schema=schema,
+                    metadata=metadata,
+                    inherit_schema=self.inherit_schema,
+                    **kw
+                    )
+
+    @property
+    def bind(self):
+        return self.metadata and self.metadata.bind or None
+
+    def create(self, bind=None, checkfirst=False):
+        """Issue CREATE ddl for this type, if applicable."""
+
+        if bind is None:
+            bind = _bind_or_error(self)
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t.create(bind=bind, checkfirst=checkfirst)
+
+    def drop(self, bind=None, checkfirst=False):
+        """Issue DROP ddl for this type, if applicable."""
+
+        if bind is None:
+            bind = _bind_or_error(self)
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t.drop(bind=bind, checkfirst=checkfirst)
+
+    def _on_table_create(self, target, bind, **kw):
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t._on_table_create(target, bind, **kw)
+
+    def _on_table_drop(self, target, bind, **kw):
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t._on_table_drop(target, bind, **kw)
+
+    def _on_metadata_create(self, target, bind, **kw):
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t._on_metadata_create(target, bind, **kw)
+
+    def _on_metadata_drop(self, target, bind, **kw):
+        t = self.dialect_impl(bind.dialect)
+        if t.__class__ is not self.__class__ and isinstance(t, SchemaType):
+            t._on_metadata_drop(target, bind, **kw)
+
+class Enum(String, SchemaType):
     """Generic Enum Type.
 
     The Enum type provides a set of possible string values which the
@@ -957,7 +1080,7 @@ class Enum(String, schema.SchemaType):
                         length=length,
                         convert_unicode=convert_unicode,
                         )
-        schema.SchemaType.__init__(self, **kw)
+        SchemaType.__init__(self, **kw)
 
     def __repr__(self):
         return util.generic_repr(self, [
@@ -969,9 +1092,10 @@ class Enum(String, schema.SchemaType):
         return not self.native_enum or \
                     not compiler.dialect.supports_native_enum
 
-    def _set_table(self, column, table):
+    @util.dependencies("sqlalchemy.sql.schema")
+    def _set_table(self, schema, column, table):
         if self.native_enum:
-            schema.SchemaType._set_table(self, column, table)
+            SchemaType._set_table(self, column, table)
 
         e = schema.CheckConstraint(
                         column.in_(self.enums),
@@ -1079,7 +1203,7 @@ class PickleType(TypeDecorator):
             return x == y
 
 
-class Boolean(StandardSQLOperators, schema.SchemaType):
+class Boolean(StandardSQLOperators, SchemaType):
     """A bool datatype.
 
     Boolean typically uses BOOLEAN or SMALLINT on the DDL side, and on
@@ -1106,7 +1230,8 @@ class Boolean(StandardSQLOperators, schema.SchemaType):
     def _should_create_constraint(self, compiler):
         return not compiler.dialect.supports_native_boolean
 
-    def _set_table(self, column, table):
+    @util.dependencies("sqlalchemy.sql.schema")
+    def _set_table(self, schema, column, table):
         if not self.create_constraint:
             return
 
@@ -1389,8 +1514,46 @@ class BOOLEAN(Boolean):
 
     __visit_name__ = 'BOOLEAN'
 
+class NullType(StandardSQLOperators):
+    """An unknown type.
+
+    :class:`.NullType` is used as a default type for those cases where
+    a type cannot be determined, including:
+
+    * During table reflection, when the type of a column is not recognized
+      by the :class:`.Dialect`
+    * When constructing SQL expressions using plain Python objects of
+      unknown types (e.g. ``somecolumn == my_special_object``)
+    * When a new :class:`.Column` is created, and the given type is passed
+      as ``None`` or is not passed at all.
+
+    The :class:`.NullType` can be used within SQL expression invocation
+    without issue, it just has no behavior either at the expression construction
+    level or at the bind-parameter/result processing level.  :class:`.NullType`
+    will result in a :class:`.CompileException` if the compiler is asked to render
+    the type itself, such as if it is used in a :func:`.cast` operation
+    or within a schema creation operation such as that invoked by
+    :meth:`.MetaData.create_all` or the :class:`.CreateTable` construct.
+
+    """
+    __visit_name__ = 'null'
+
+    _isnull = True
+
+    class Comparator(StandardSQLOperators.Comparator):
+        def _adapt_expression(self, op, other_comparator):
+            if isinstance(other_comparator, NullType.Comparator) or \
+                not operators.is_commutative(op):
+                return op, self.expr.type
+            else:
+                return other_comparator._adapt_expression(op, self)
+    comparator_factory = Comparator
+
+
+NULLTYPE = NullType()
 BOOLEANTYPE = Boolean()
 STRINGTYPE = String()
+INTEGERTYPE = Integer()
 
 _type_map = {
     int: Integer(),
@@ -1411,4 +1574,12 @@ else:
     _type_map[unicode] = Unicode()
     _type_map[str] = String()
 
+
+# back-assign to type_api
+from . import type_api
+type_api.BOOLEANTYPE = BOOLEANTYPE
+type_api.STRINGTYPE = STRINGTYPE
+type_api.INTEGERTYPE = INTEGERTYPE
+type_api.NULLTYPE = NULLTYPE
+type_api._type_map = _type_map
 

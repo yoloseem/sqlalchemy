@@ -788,27 +788,29 @@ def dependencies(*deps):
     and not pollute the module-level namespace.
 
     """
-    import_deps = {}
+    import_deps = []
     for dep in deps:
         tokens = dep.split(".")
-        import_deps[tokens[-1]] = importlater(
+        import_deps.append(
+                importlater(
                 ".".join(tokens[0:-1]),
                 tokens[-1]
             )
+        )
 
     def decorate(fn):
         spec = compat.inspect_getfullargspec(fn)
 
         spec_zero = list(spec[0])
-        for i, name in enumerate(spec_zero):
-            if name in import_deps:
-                spec[0][i] = "import_deps[%r]" % name
+        hasself = spec_zero[0] in ('self', 'cls')
+
+        for i in range(len(import_deps)):
+            spec[0][i + (1 if hasself else 0)] = "import_deps[%r]" % i
 
         inner_spec = format_argspec_plus(spec, grouped=False)
 
-        for name in list(spec_zero):
-            if name in import_deps:
-                spec_zero.remove(name)
+        for impname in import_deps:
+            del spec_zero[1 if hasself else 0]
         spec[0][:] = spec_zero
 
         outer_spec = format_argspec_plus(spec, grouped=False)
@@ -817,6 +819,7 @@ def dependencies(*deps):
                     "args": outer_spec['args'],
                     "apply_kw": inner_spec['apply_kw']
         }
+
         decorated = eval(code, locals())
         decorated.__defaults__ = getattr(fn, 'im_func', fn).__defaults__
         return update_wrapper(decorated, fn)
