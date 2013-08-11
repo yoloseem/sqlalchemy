@@ -4,8 +4,8 @@ from .types_base import TypeEngine
 from .elements import BindParameter, True_, False_, BinaryExpression, \
         Null, _const_expr, _clause_element_as_expr, ScalarSelect, \
         ClauseList, ColumnElement, TextClause, asc, desc, nullsfirst, \
-        nullslast, collate
-from .selectable import SelectBase, Alias
+        nullslast, collate, UnaryExpression, null
+from .selectable import SelectBase, Alias, Selectable
 
 class _DefaultColumnComparator(operators.ColumnOperators):
     """Defines comparison and math operations.
@@ -14,6 +14,8 @@ class _DefaultColumnComparator(operators.ColumnOperators):
     of all operations.
 
     """
+
+    BOOLEANTYPE = None
 
     @util.memoized_property
     def type(self):
@@ -68,7 +70,7 @@ class _DefaultColumnComparator(operators.ColumnOperators):
                 return BinaryExpression(expr,
                                 obj,
                                 op,
-                                type_=sqltypes.BOOLEANTYPE,
+                                type_=self.BOOLEANTYPE,
                                 negate=negate, modifiers=kwargs)
             else:
                 # all other None/True/False uses IS, IS NOT
@@ -91,13 +93,13 @@ class _DefaultColumnComparator(operators.ColumnOperators):
             return BinaryExpression(obj,
                             expr,
                             op,
-                            type_=sqltypes.BOOLEANTYPE,
+                            type_=self.BOOLEANTYPE,
                             negate=negate, modifiers=kwargs)
         else:
             return BinaryExpression(expr,
                             obj,
                             op,
-                            type_=sqltypes.BOOLEANTYPE,
+                            type_=self.BOOLEANTYPE,
                             negate=negate, modifiers=kwargs)
 
     def _binary_operate(self, expr, op, obj, reverse=False, result_type=None,
@@ -142,7 +144,7 @@ class _DefaultColumnComparator(operators.ColumnOperators):
         args = []
         for o in seq_or_selectable:
             if not _is_literal(o):
-                if not isinstance(o, ColumnOperators):
+                if not isinstance(o, operators.ColumnOperators):
                     raise exc.InvalidRequestError('in() function accept'
                             's either a list of non-selectable values, '
                             'or a selectable: %r' % o)

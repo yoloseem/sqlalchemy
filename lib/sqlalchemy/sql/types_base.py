@@ -16,7 +16,6 @@ For more information see the SQLAlchemy documentation on types.
 from .. import exc, util
 from . import operators
 from .visitors import Visitable
-default = util.importlater("sqlalchemy.engine", "default")
 
 NoneType = type(None)
 
@@ -353,12 +352,12 @@ class TypeEngine(Visitable):
         # ClauseElement.compile()....this is a mistake.
 
         if not dialect:
-            dialect = self._default_dialect
+            dialect = self._default_dialect()
 
         return dialect.type_compiler.process(self)
 
-    @property
-    def _default_dialect(self):
+    @util.dependencies("sqlalchemy.engine.default")
+    def _default_dialect(self, default):
         if self.__class__.__module__.startswith("sqlalchemy.dialects"):
             tokens = self.__class__.__module__.split(".")[0:3]
             mod = ".".join(tokens)

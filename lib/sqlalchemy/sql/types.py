@@ -11,14 +11,6 @@ of these types.
 For more information see the SQLAlchemy documentation on types.
 
 """
-__all__ = ['TypeEngine', 'TypeDecorator', 'UserDefinedType',
-            'INT', 'CHAR', 'VARCHAR', 'NCHAR', 'NVARCHAR', 'TEXT', 'Text',
-            'FLOAT', 'NUMERIC', 'REAL', 'DECIMAL', 'TIMESTAMP', 'DATETIME',
-            'CLOB', 'BLOB', 'BINARY', 'VARBINARY', 'BOOLEAN', 'BIGINT',
-            'SMALLINT', 'INTEGER', 'DATE', 'TIME', 'String', 'Integer',
-            'SmallInteger', 'BigInteger', 'Numeric', 'Float', 'DateTime',
-            'Date', 'Time', 'LargeBinary', 'Binary', 'Boolean', 'Unicode',
-            'Concatenable', 'UnicodeText', 'PickleType', 'Interval', 'Enum']
 
 import datetime as dt
 import codecs
@@ -30,7 +22,6 @@ from .. import exc, util, processors
 from . import operators, schema
 from ..util import pickle
 import decimal
-default = util.importlater("sqlalchemy.engine", "default")
 
 NoneType = type(None)
 if util.jython:
@@ -40,7 +31,9 @@ if util.jython:
 
 class StandardSQLOperators(TypeEngine):
     class Comparator(_DefaultColumnComparator, TypeEngine.Comparator):
-        pass
+        @util.memoized_property
+        def BOOLEANTYPE(self):
+            return BOOLEANTYPE
 
     comparator_factory = Comparator
 
