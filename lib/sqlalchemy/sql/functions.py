@@ -4,11 +4,15 @@
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
+"""SQL function API, factories, and built-in functions.
+
+"""
 from . import types as sqltypes, schema
 from .base import Executable
 from .elements import ClauseList, cast, extract, _literal_as_binds, \
-        literal_column, _type_from_args, ColumnElement, _clone
-from .selectable import FromClause
+        literal_column, _type_from_args, ColumnElement, _clone,\
+        Over, BindParameter
+from .selectable import FromClause, Select
 
 from . import operators
 from .visitors import VisitableType
@@ -93,7 +97,7 @@ class FunctionElement(Executable, ColumnElement, FromClause):
         .. versionadded:: 0.7
 
         """
-        return over(self, partition_by=partition_by, order_by=order_by)
+        return Over(self, partition_by=partition_by, order_by=order_by)
 
     @property
     def _from_objects(self):
@@ -116,7 +120,7 @@ class FunctionElement(Executable, ColumnElement, FromClause):
             s = select([function_element])
 
         """
-        s = select([self])
+        s = Select([self])
         if self._execution_options:
             s = s.execution_options(**self._execution_options)
         return s
@@ -189,16 +193,15 @@ class _FunctionGenerator(object):
             package = None
 
         if package is not None and \
-            package in functions._registry and \
-            fname in functions._registry[package]:
-            func = functions._registry[package][fname]
+            package in _registry and \
+            fname in _registry[package]:
+            func = _registry[package][fname]
             return func(*c, **o)
 
         return Function(self.__names[-1],
                         packagenames=self.__names[0:-1], *c, **o)
 
 
-# "func" global - i.e. func.count()
 func = _FunctionGenerator()
 """Generate SQL function expressions.
 
@@ -263,8 +266,6 @@ func = _FunctionGenerator()
 
 """
 
-# "modifier" global - i.e. modifier.distinct
-# TODO: use UnaryExpression for this instead ?
 modifier = _FunctionGenerator(group=False)
 
 class Function(FunctionElement):

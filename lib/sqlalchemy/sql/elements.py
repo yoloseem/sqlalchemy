@@ -7,10 +7,10 @@ from .visitors import Visitable
 from . import visitors
 from .annotation import Annotated
 import itertools
-from .base import Executable, PARSE_AUTOCOMMIT, Immutable, Generative, _generative, NO_ARG
+from .base import Executable, PARSE_AUTOCOMMIT, Immutable, \
+        Generative, _generative, NO_ARG
 import re
-
-annotation = util.importlater("sqlalchemy.sql", "annotation")
+import operator
 
 class _truncated_label(util.text_type):
     """A unicode subclass used to identify symbolic "
@@ -225,64 +225,6 @@ def _interpret_as_column_or_from(element):
 
     return ColumnClause(str(element), is_literal=True)
 
-def nullsfirst(column):
-    """Return a NULLS FIRST ``ORDER BY`` clause element.
-
-    e.g.::
-
-      someselect.order_by(desc(table1.mycol).nullsfirst())
-
-    produces::
-
-      ORDER BY mycol DESC NULLS FIRST
-
-    """
-    return UnaryExpression(column, modifier=operators.nullsfirst_op)
-
-
-def nullslast(column):
-    """Return a NULLS LAST ``ORDER BY`` clause element.
-
-    e.g.::
-
-      someselect.order_by(desc(table1.mycol).nullslast())
-
-    produces::
-
-        ORDER BY mycol DESC NULLS LAST
-
-    """
-    return UnaryExpression(column, modifier=operators.nullslast_op)
-
-
-def desc(column):
-    """Return a descending ``ORDER BY`` clause element.
-
-    e.g.::
-
-      someselect.order_by(desc(table1.mycol))
-
-    produces::
-
-        ORDER BY mycol DESC
-
-    """
-    return UnaryExpression(column, modifier=operators.desc_op)
-
-
-def asc(column):
-    """Return an ascending ``ORDER BY`` clause element.
-
-    e.g.::
-
-      someselect.order_by(asc(table1.mycol))
-
-    produces::
-
-      ORDER BY mycol ASC
-
-    """
-    return UnaryExpression(column, modifier=operators.asc_op)
 
 
 def null():
@@ -326,21 +268,6 @@ def collate(expression, collation):
         _literal_as_text(collation),
         operators.collate, type_=expr.type)
 
-def distinct(expr):
-    """Return a ``DISTINCT`` clause.
-
-    e.g.::
-
-        distinct(a)
-
-    renders::
-
-        DISTINCT a
-
-    """
-    expr = sqlutil._literal_as_binds(expr)
-    return UnaryExpression(expr,
-                operator=operators.distinct_op, type_=expr.type)
 
 
 def between(ctest, cleft, cright):
@@ -353,7 +280,7 @@ def between(ctest, cleft, cright):
     similar functionality.
 
     """
-    ctest = sqlutil._literal_as_binds(ctest)
+    ctest = _literal_as_binds(ctest)
     return ctest.between(cleft, cright)
 
 
@@ -726,14 +653,14 @@ class ClauseElement(Visitable):
         updated by the given dictionary.
 
         """
-        return annotation.Annotated(self, values)
+        return Annotated(self, values)
 
     def _with_annotations(self, values):
         """return a copy of this ClauseElement with annotations
         replaced by the given dictionary.
 
         """
-        return annotation.Annotated(self, values)
+        return Annotated(self, values)
 
     def _deannotate(self, values=None, clone=False):
         """return a copy of this :class:`.ClauseElement` with annotations
@@ -1848,6 +1775,85 @@ class UnaryExpression(ColumnElement):
                     self_group(against=self.operator or self.modifier)
         self.type = sqltypes.to_instance(type_)
         self.negate = negate
+
+    @classmethod
+    def nullsfirst(cls, column):
+        """Return a NULLS FIRST ``ORDER BY`` clause element.
+
+        e.g.::
+
+          someselect.order_by(desc(table1.mycol).nullsfirst())
+
+        produces::
+
+          ORDER BY mycol DESC NULLS FIRST
+
+        """
+        return UnaryExpression(column, modifier=operators.nullsfirst_op)
+
+
+    @classmethod
+    def nullslast(cls, column):
+        """Return a NULLS LAST ``ORDER BY`` clause element.
+
+        e.g.::
+
+          someselect.order_by(desc(table1.mycol).nullslast())
+
+        produces::
+
+            ORDER BY mycol DESC NULLS LAST
+
+        """
+        return UnaryExpression(column, modifier=operators.nullslast_op)
+
+
+    @classmethod
+    def desc(cls, column):
+        """Return a descending ``ORDER BY`` clause element.
+
+        e.g.::
+
+          someselect.order_by(desc(table1.mycol))
+
+        produces::
+
+            ORDER BY mycol DESC
+
+        """
+        return UnaryExpression(column, modifier=operators.desc_op)
+
+    @classmethod
+    def asc(cls, column):
+        """Return an ascending ``ORDER BY`` clause element.
+
+        e.g.::
+
+          someselect.order_by(asc(table1.mycol))
+
+        produces::
+
+          ORDER BY mycol ASC
+
+        """
+        return UnaryExpression(column, modifier=operators.asc_op)
+
+    @classmethod
+    def distinct(cls, expr):
+        """Return a ``DISTINCT`` clause.
+
+        e.g.::
+
+            distinct(a)
+
+        renders::
+
+            DISTINCT a
+
+        """
+        expr = _literal_as_binds(expr)
+        return UnaryExpression(expr,
+                    operator=operators.distinct_op, type_=expr.type)
 
     @util.memoized_property
     def _order_by_label_element(self):

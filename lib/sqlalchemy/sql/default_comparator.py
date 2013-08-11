@@ -1,10 +1,19 @@
+# sql/default_comparator.py
+# Copyright (C) 2005-2013 the SQLAlchemy authors and contributors <see AUTHORS file>
+#
+# This module is part of SQLAlchemy and is released under
+# the MIT License: http://www.opensource.org/licenses/mit-license.php
+
+"""Default implementation of SQL comparison operations.
+"""
+
 from .. import exc, util
 from . import operators
 from .types_base import TypeEngine
 from .elements import BindParameter, True_, False_, BinaryExpression, \
         Null, _const_expr, _clause_element_as_expr, ScalarSelect, \
-        ClauseList, ColumnElement, TextClause, asc, desc, nullsfirst, \
-        nullslast, collate, UnaryExpression, null
+        ClauseList, ColumnElement, TextClause, UnaryExpression, \
+        collate, null
 from .selectable import SelectBase, Alias, Selectable
 
 class _DefaultColumnComparator(operators.ColumnOperators):
@@ -229,10 +238,10 @@ class _DefaultColumnComparator(operators.ColumnOperators):
         "contains_op": (_boolean_compare, operators.notcontains_op),
         "startswith_op": (_boolean_compare, operators.notstartswith_op),
         "endswith_op": (_boolean_compare, operators.notendswith_op),
-        "desc_op": (_scalar, desc),
-        "asc_op": (_scalar, asc),
-        "nullsfirst_op": (_scalar, nullsfirst),
-        "nullslast_op": (_scalar, nullslast),
+        "desc_op": (_scalar, UnaryExpression.desc),
+        "asc_op": (_scalar, UnaryExpression.asc),
+        "nullsfirst_op": (_scalar, UnaryExpression.nullsfirst),
+        "nullslast_op": (_scalar, UnaryExpression.nullslast),
         "in_op": (_in_impl, operators.notin_op),
         "notin_op": (_in_impl, operators.in_op),
         "is_": (_boolean_compare, operators.is_),

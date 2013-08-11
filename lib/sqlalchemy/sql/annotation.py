@@ -1,3 +1,14 @@
+# sql/annotation.py
+# Copyright (C) 2005-2013 the SQLAlchemy authors and contributors <see AUTHORS file>
+#
+# This module is part of SQLAlchemy and is released under
+# the MIT License: http://www.opensource.org/licenses/mit-license.php
+
+"""The :class:`.Annotated` class and related routines; creates hash-equivalent
+copies of SQL constructs which contain context-specific markers and associations.
+
+"""
+
 from .. import util
 from . import operators
 

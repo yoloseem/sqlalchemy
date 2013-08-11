@@ -7,7 +7,7 @@
 """Define core interfaces used by the engine system."""
 
 from .. import util, event, events
-
+from ..sql.compiler import Compiled, TypeCompiler
 
 class Dialect(object):
     """Define the behavior of a specific database and DB-API combination.
@@ -767,8 +767,6 @@ class ExecutionContext(object):
         """
 
         raise NotImplementedError()
-
-
 
 
 class Connectable(object):

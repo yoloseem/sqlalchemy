@@ -1,188 +1,20 @@
-from .base import HasPrefixes, Executable, _generative
+# schema/dml.py
+# Copyright (C) 2009-2013 the SQLAlchemy authors and contributors <see AUTHORS file>
+#
+# This module is part of SQLAlchemy and is released under
+# the MIT License: http://www.opensource.org/licenses/mit-license.php
+"""
+Provide :class:`.Insert`, :class:`.Update` and :class:`.Delete`.
+
+"""
+
+from .base import Executable, _generative, _from_objects
 from .elements import ClauseElement, _literal_as_text, Null, and_, _clone
-from .selectable import _interpret_as_from, _interpret_as_select
+from .selectable import _interpret_as_from, _interpret_as_select, HasPrefixes
 from .. import util
 from .. import exc
 
 
-def insert(table, values=None, inline=False, **kwargs):
-    """Represent an ``INSERT`` statement via the :class:`.Insert` SQL
-    construct.
-
-    Similar functionality is available via the
-    :meth:`~.TableClause.insert` method on
-    :class:`~.schema.Table`.
-
-
-    :param table: :class:`.TableClause` which is the subject of the insert.
-
-    :param values: collection of values to be inserted; see
-     :meth:`.Insert.values` for a description of allowed formats here.
-     Can be omitted entirely; a :class:`.Insert` construct will also
-     dynamically render the VALUES clause at execution time based on
-     the parameters passed to :meth:`.Connection.execute`.
-
-    :param inline: if True, SQL defaults will be compiled 'inline' into the
-      statement and not pre-executed.
-
-    If both `values` and compile-time bind parameters are present, the
-    compile-time bind parameters override the information specified
-    within `values` on a per-key basis.
-
-    The keys within `values` can be either :class:`~sqlalchemy.schema.Column`
-    objects or their string identifiers. Each key may reference one of:
-
-    * a literal data value (i.e. string, number, etc.);
-    * a Column object;
-    * a SELECT statement.
-
-    If a ``SELECT`` statement is specified which references this
-    ``INSERT`` statement's table, the statement will be correlated
-    against the ``INSERT`` statement.
-
-    .. seealso::
-
-        :ref:`coretutorial_insert_expressions` - SQL Expression Tutorial
-
-        :ref:`inserts_and_updates` - SQL Expression Tutorial
-
-    """
-    return Insert(table, values, inline=inline, **kwargs)
-
-
-def update(table, whereclause=None, values=None, inline=False, **kwargs):
-    """Represent an ``UPDATE`` statement via the :class:`.Update` SQL
-    construct.
-
-    E.g.::
-
-        from sqlalchemy import update
-
-        stmt = update(users).where(users.c.id==5).\\
-                values(name='user #5')
-
-    Similar functionality is available via the
-    :meth:`~.TableClause.update` method on
-    :class:`.Table`::
-
-
-        stmt = users.update().\\
-                    where(users.c.id==5).\\
-                    values(name='user #5')
-
-    :param table: A :class:`.Table` object representing the database
-     table to be updated.
-
-    :param whereclause: Optional SQL expression describing the ``WHERE``
-     condition of the ``UPDATE`` statement.   Modern applications
-     may prefer to use the generative :meth:`~Update.where()`
-     method to specify the ``WHERE`` clause.
-
-     The WHERE clause can refer to multiple tables.
-     For databases which support this, an ``UPDATE FROM`` clause will
-     be generated, or on MySQL, a multi-table update.  The statement
-     will fail on databases that don't have support for multi-table
-     update statements.  A SQL-standard method of referring to
-     additional tables in the WHERE clause is to use a correlated
-     subquery::
-
-        users.update().values(name='ed').where(
-                users.c.name==select([addresses.c.email_address]).\\
-                            where(addresses.c.user_id==users.c.id).\\
-                            as_scalar()
-                )
-
-     .. versionchanged:: 0.7.4
-         The WHERE clause can refer to multiple tables.
-
-    :param values:
-      Optional dictionary which specifies the ``SET`` conditions of the
-      ``UPDATE``.  If left as ``None``, the ``SET``
-      conditions are determined from those parameters passed to the
-      statement during the execution and/or compilation of the
-      statement.   When compiled standalone without any parameters,
-      the ``SET`` clause generates for all columns.
-
-      Modern applications may prefer to use the generative
-      :meth:`.Update.values` method to set the values of the
-      UPDATE statement.
-
-    :param inline:
-      if True, SQL defaults present on :class:`.Column` objects via
-      the ``default`` keyword will be compiled 'inline' into the statement
-      and not pre-executed.  This means that their values will not
-      be available in the dictionary returned from
-      :meth:`.ResultProxy.last_updated_params`.
-
-    If both ``values`` and compile-time bind parameters are present, the
-    compile-time bind parameters override the information specified
-    within ``values`` on a per-key basis.
-
-    The keys within ``values`` can be either :class:`.Column`
-    objects or their string identifiers (specifically the "key" of the
-    :class:`.Column`, normally but not necessarily equivalent to
-    its "name").  Normally, the
-    :class:`.Column` objects used here are expected to be
-    part of the target :class:`.Table` that is the table
-    to be updated.  However when using MySQL, a multiple-table
-    UPDATE statement can refer to columns from any of
-    the tables referred to in the WHERE clause.
-
-    The values referred to in ``values`` are typically:
-
-    * a literal data value (i.e. string, number, etc.)
-    * a SQL expression, such as a related :class:`.Column`,
-      a scalar-returning :func:`.select` construct,
-      etc.
-
-    When combining :func:`.select` constructs within the values
-    clause of an :func:`.update` construct,
-    the subquery represented by the :func:`.select` should be
-    *correlated* to the parent table, that is, providing criterion
-    which links the table inside the subquery to the outer table
-    being updated::
-
-        users.update().values(
-                name=select([addresses.c.email_address]).\\
-                        where(addresses.c.user_id==users.c.id).\\
-                        as_scalar()
-            )
-
-    .. seealso::
-
-        :ref:`inserts_and_updates` - SQL Expression
-        Language Tutorial
-
-
-    """
-    return Update(
-            table,
-            whereclause=whereclause,
-            values=values,
-            inline=inline,
-            **kwargs)
-
-
-def delete(table, whereclause=None, **kwargs):
-    """Represent a ``DELETE`` statement via the :class:`.Delete` SQL
-    construct.
-
-    Similar functionality is available via the
-    :meth:`~.TableClause.delete` method on
-    :class:`~.schema.Table`.
-
-    :param table: The table to be updated.
-
-    :param whereclause: A :class:`.ClauseElement` describing the ``WHERE``
-      condition of the ``UPDATE`` statement. Note that the
-      :meth:`~Delete.where()` generative method may be used instead.
-
-    .. seealso::
-
-        :ref:`deletes` - SQL Expression Tutorial
-
-    """
-    return Delete(table, whereclause, **kwargs)
 
 class UpdateBase(HasPrefixes, Executable, ClauseElement):
     """Form the base for ``INSERT``, ``UPDATE``, and ``DELETE`` statements.
@@ -497,6 +329,45 @@ class Insert(ValuesBase):
                 prefixes=None,
                 returning=None,
                 **kwargs):
+        """Construct an :class:`.Insert` object.
+
+        Similar functionality is available via the
+        :meth:`~.TableClause.insert` method on
+        :class:`~.schema.Table`.
+
+        :param table: :class:`.TableClause` which is the subject of the insert.
+
+        :param values: collection of values to be inserted; see
+         :meth:`.Insert.values` for a description of allowed formats here.
+         Can be omitted entirely; a :class:`.Insert` construct will also
+         dynamically render the VALUES clause at execution time based on
+         the parameters passed to :meth:`.Connection.execute`.
+
+        :param inline: if True, SQL defaults will be compiled 'inline' into the
+          statement and not pre-executed.
+
+        If both `values` and compile-time bind parameters are present, the
+        compile-time bind parameters override the information specified
+        within `values` on a per-key basis.
+
+        The keys within `values` can be either :class:`~sqlalchemy.schema.Column`
+        objects or their string identifiers. Each key may reference one of:
+
+        * a literal data value (i.e. string, number, etc.);
+        * a Column object;
+        * a SELECT statement.
+
+        If a ``SELECT`` statement is specified which references this
+        ``INSERT`` statement's table, the statement will be correlated
+        against the ``INSERT`` statement.
+
+        .. seealso::
+
+            :ref:`coretutorial_insert_expressions` - SQL Expression Tutorial
+
+            :ref:`inserts_and_updates` - SQL Expression Tutorial
+
+        """
         ValuesBase.__init__(self, table, values, prefixes)
         self._bind = bind
         self.select = None
@@ -578,6 +449,108 @@ class Update(ValuesBase):
                 prefixes=None,
                 returning=None,
                 **kwargs):
+        """Construct an :class:`.Update` object.
+
+        E.g.::
+
+            from sqlalchemy import update
+
+            stmt = update(users).where(users.c.id==5).\\
+                    values(name='user #5')
+
+        Similar functionality is available via the
+        :meth:`~.TableClause.update` method on
+        :class:`.Table`::
+
+            stmt = users.update().\\
+                        where(users.c.id==5).\\
+                        values(name='user #5')
+
+        :param table: A :class:`.Table` object representing the database
+         table to be updated.
+
+        :param whereclause: Optional SQL expression describing the ``WHERE``
+         condition of the ``UPDATE`` statement.   Modern applications
+         may prefer to use the generative :meth:`~Update.where()`
+         method to specify the ``WHERE`` clause.
+
+         The WHERE clause can refer to multiple tables.
+         For databases which support this, an ``UPDATE FROM`` clause will
+         be generated, or on MySQL, a multi-table update.  The statement
+         will fail on databases that don't have support for multi-table
+         update statements.  A SQL-standard method of referring to
+         additional tables in the WHERE clause is to use a correlated
+         subquery::
+
+            users.update().values(name='ed').where(
+                    users.c.name==select([addresses.c.email_address]).\\
+                                where(addresses.c.user_id==users.c.id).\\
+                                as_scalar()
+                    )
+
+         .. versionchanged:: 0.7.4
+             The WHERE clause can refer to multiple tables.
+
+        :param values:
+          Optional dictionary which specifies the ``SET`` conditions of the
+          ``UPDATE``.  If left as ``None``, the ``SET``
+          conditions are determined from those parameters passed to the
+          statement during the execution and/or compilation of the
+          statement.   When compiled standalone without any parameters,
+          the ``SET`` clause generates for all columns.
+
+          Modern applications may prefer to use the generative
+          :meth:`.Update.values` method to set the values of the
+          UPDATE statement.
+
+        :param inline:
+          if True, SQL defaults present on :class:`.Column` objects via
+          the ``default`` keyword will be compiled 'inline' into the statement
+          and not pre-executed.  This means that their values will not
+          be available in the dictionary returned from
+          :meth:`.ResultProxy.last_updated_params`.
+
+        If both ``values`` and compile-time bind parameters are present, the
+        compile-time bind parameters override the information specified
+        within ``values`` on a per-key basis.
+
+        The keys within ``values`` can be either :class:`.Column`
+        objects or their string identifiers (specifically the "key" of the
+        :class:`.Column`, normally but not necessarily equivalent to
+        its "name").  Normally, the
+        :class:`.Column` objects used here are expected to be
+        part of the target :class:`.Table` that is the table
+        to be updated.  However when using MySQL, a multiple-table
+        UPDATE statement can refer to columns from any of
+        the tables referred to in the WHERE clause.
+
+        The values referred to in ``values`` are typically:
+
+        * a literal data value (i.e. string, number, etc.)
+        * a SQL expression, such as a related :class:`.Column`,
+          a scalar-returning :func:`.select` construct,
+          etc.
+
+        When combining :func:`.select` constructs within the values
+        clause of an :func:`.update` construct,
+        the subquery represented by the :func:`.select` should be
+        *correlated* to the parent table, that is, providing criterion
+        which links the table inside the subquery to the outer table
+        being updated::
+
+            users.update().values(
+                    name=select([addresses.c.email_address]).\\
+                            where(addresses.c.user_id==users.c.id).\\
+                            as_scalar()
+                )
+
+        .. seealso::
+
+            :ref:`inserts_and_updates` - SQL Expression
+            Language Tutorial
+
+
+        """
         ValuesBase.__init__(self, table, values, prefixes)
         self._bind = bind
         self._returning = returning
@@ -644,6 +617,25 @@ class Delete(UpdateBase):
             returning=None,
             prefixes=None,
             **kwargs):
+        """Construct :class:`.Delete` object.
+
+        Similar functionality is available via the
+        :meth:`~.TableClause.delete` method on
+        :class:`~.schema.Table`.
+
+        :param table: The table to be updated.
+
+        :param whereclause: A :class:`.ClauseElement` describing the ``WHERE``
+          condition of the ``UPDATE`` statement. Note that the
+          :meth:`~Delete.where()` generative method may be used instead.
+
+        .. seealso::
+
+            :ref:`deletes` - SQL Expression Tutorial
+
+        """
+        return Delete(table, whereclause, **kwargs)
+
         self._bind = bind
         self.table = _interpret_as_from(table)
         self._returning = returning

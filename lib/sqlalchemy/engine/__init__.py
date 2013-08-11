@@ -57,6 +57,8 @@ from .interfaces import (
     Connectable,
     Dialect,
     ExecutionContext,
+    Compiled,
+    TypeCompiler
 )
 
 from .base import (
@@ -81,10 +83,6 @@ from .util import (
     connection_memoize
     )
 
-from ..sql.base import (
-    Compiled,
-    TypeCompiler
-    )
 
 from . import util, strategies
 

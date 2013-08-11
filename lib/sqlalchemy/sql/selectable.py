@@ -1,12 +1,24 @@
+# sql/selectable.py
+# Copyright (C) 2005-2013 the SQLAlchemy authors and contributors <see AUTHORS file>
+#
+# This module is part of SQLAlchemy and is released under
+# the MIT License: http://www.opensource.org/licenses/mit-license.php
+
+"""The :class:`.FromClause` class of SQL expression elements, representing
+SQL tables and derived rowsets.
+
+"""
+
 from .elements import ClauseElement, TextClause, _clone, ClauseList, \
         _literal_as_text, _interpret_as_column_or_from, ScalarSelect, _expand_cloned,\
-        _select_iterables
-from .base import Immutable, Executable, _generative, HasPrefixes, \
+        _select_iterables, and_
+from .base import Immutable, Executable, _generative, \
             ColumnCollection, ColumnSet, _from_objects
 from .. import inspection
 from .. import util
 from .. import exc
 from operator import attrgetter
+import operator
 from .annotation import Annotated
 import itertools
 
@@ -28,9 +40,6 @@ def _interpret_as_select(element):
     return element
 
 
-
-
-
 def subquery(alias, *args, **kwargs):
     """Return an :class:`.Alias` object derived
     from a :class:`.Select`.
@@ -45,9 +54,6 @@ def subquery(alias, *args, **kwargs):
 
     """
     return Select(*args, **kwargs).alias(alias)
-
-
-
 
 
 def union(*selects, **kwargs):
@@ -239,8 +245,8 @@ class FromClause(Selectable):
     schema = None
     _memoized_property = util.group_expirable_memoized_property(["_columns"])
 
-    @util.dependencies("sqlalchemy.sql.functions.func")
-    def count(self, func, whereclause=None, **params):
+    @util.dependencies("sqlalchemy.sql.functions")
+    def count(self, functions, whereclause=None, **params):
         """return a SELECT COUNT generated against this
         :class:`.FromClause`."""
 
@@ -248,8 +254,8 @@ class FromClause(Selectable):
             col = list(self.primary_key)[0]
         else:
             col = list(self.columns)[0]
-        return select(
-                    [func.count(col).label('tbl_row_count')],
+        return Select(
+                    [functions.func.count(col).label('tbl_row_count')],
                     whereclause,
                     from_obj=[self],
                     **params)
@@ -653,7 +659,105 @@ class Join(FromClause):
             left_right = left.right
         else:
             left_right = None
-        return sqlutil.join_condition(left, right, a_subset=left_right)
+        return self.join_condition(left, right, a_subset=left_right)
+
+    @classmethod
+    def _join_condition(cls, a, b, ignore_nonexistent_tables=False,
+                                a_subset=None,
+                                consider_as_foreign_keys=None):
+        """create a join condition between two tables or selectables.
+
+        e.g.::
+
+            join_condition(tablea, tableb)
+
+        would produce an expression along the lines of::
+
+            tablea.c.id==tableb.c.tablea_id
+
+        The join is determined based on the foreign key relationships
+        between the two selectables.   If there are multiple ways
+        to join, or no way to join, an error is raised.
+
+        :param ignore_nonexistent_tables:  Deprecated - this
+        flag is no longer used.  Only resolution errors regarding
+        the two given tables are propagated.
+
+        :param a_subset: An optional expression that is a sub-component
+        of ``a``.  An attempt will be made to join to just this sub-component
+        first before looking at the full ``a`` construct, and if found
+        will be successful even if there are other ways to join to ``a``.
+        This allows the "right side" of a join to be passed thereby
+        providing a "natural join".
+
+        """
+        crit = []
+        constraints = set()
+
+        for left in (a_subset, a):
+            if left is None:
+                continue
+            for fk in sorted(
+                        b.foreign_keys,
+                        key=lambda fk: fk.parent._creation_order):
+                if consider_as_foreign_keys is not None and \
+                    fk.parent not in consider_as_foreign_keys:
+                    continue
+                try:
+                    col = fk.get_referent(left)
+                except exc.NoReferenceError as nrte:
+                    if nrte.table_name == left.name:
+                        raise
+                    else:
+                        continue
+
+                if col is not None:
+                    crit.append(col == fk.parent)
+                    constraints.add(fk.constraint)
+            if left is not b:
+                for fk in sorted(
+                            left.foreign_keys,
+                            key=lambda fk: fk.parent._creation_order):
+                    if consider_as_foreign_keys is not None and \
+                        fk.parent not in consider_as_foreign_keys:
+                        continue
+                    try:
+                        col = fk.get_referent(b)
+                    except exc.NoReferenceError as nrte:
+                        if nrte.table_name == b.name:
+                            raise
+                        else:
+                            # this is totally covered.  can't get
+                            # coverage to mark it.
+                            continue
+
+                    if col is not None:
+                        crit.append(col == fk.parent)
+                        constraints.add(fk.constraint)
+            if crit:
+                break
+
+        if len(crit) == 0:
+            if isinstance(b, FromGrouping):
+                hint = " Perhaps you meant to convert the right side to a "\
+                                    "subquery using alias()?"
+            else:
+                hint = ""
+            raise exc.NoForeignKeysError(
+                "Can't find any foreign key relationships "
+                "between '%s' and '%s'.%s" % (a.description, b.description, hint))
+        elif len(constraints) > 1:
+            raise exc.AmbiguousForeignKeysError(
+                "Can't determine join between '%s' and '%s'; "
+                "tables have more than one foreign key "
+                "constraint relationship between them. "
+                "Please specify the 'onclause' of this "
+                "join explicitly." % (a.description, b.description))
+        elif len(crit) == 1:
+            return (crit[0])
+        else:
+            return and_(*crit)
+
 
     def select(self, whereclause=None, **kwargs):
         """Create a :class:`.Select` from this :class:`.Join`.
@@ -675,7 +779,7 @@ class Join(FromClause):
         """
         collist = [self.left, self.right]
 
-        return select(collist, whereclause, from_obj=[self], **kwargs)
+        return Select(collist, whereclause, from_obj=[self], **kwargs)
 
     @property
     def bind(self):
@@ -1085,7 +1189,8 @@ class TableClause(Immutable, FromClause):
         else:
             return []
 
-    def count(self, whereclause=None, **params):
+    @util.dependencies("sqlalchemy.sql.functions")
+    def count(self, functions, whereclause=None, **params):
         """return a SELECT COUNT generated against this
         :class:`.TableClause`."""
 
@@ -1093,13 +1198,14 @@ class TableClause(Immutable, FromClause):
             col = list(self.primary_key)[0]
         else:
             col = list(self.columns)[0]
-        return select(
-                    [func.count(col).label('tbl_row_count')],
+        return Select(
+                    [functions.func.count(col).label('tbl_row_count')],
                     whereclause,
                     from_obj=[self],
                     **params)
 
-    def insert(self, values=None, inline=False, **kwargs):
+    @util.dependencies("sqlalchemy.sql.dml")
+    def insert(self, dml, values=None, inline=False, **kwargs):
         """Generate an :func:`.insert` construct against this
         :class:`.TableClause`.
 
@@ -1111,9 +1217,10 @@ class TableClause(Immutable, FromClause):
 
         """
 
-        return insert(self, values=values, inline=inline, **kwargs)
+        return dml.Insert(self, values=values, inline=inline, **kwargs)
 
-    def update(self, whereclause=None, values=None, inline=False, **kwargs):
+    @util.dependencies("sqlalchemy.sql.dml")
+    def update(self, dml, whereclause=None, values=None, inline=False, **kwargs):
         """Generate an :func:`.update` construct against this
         :class:`.TableClause`.
 
@@ -1125,10 +1232,11 @@ class TableClause(Immutable, FromClause):
 
         """
 
-        return update(self, whereclause=whereclause,
+        return dml.Update(self, whereclause=whereclause,
                             values=values, inline=inline, **kwargs)
 
-    def delete(self, whereclause=None, **kwargs):
+    @util.dependencies("sqlalchemy.sql.dml")
+    def delete(self, dml, whereclause=None, **kwargs):
         """Generate a :func:`.delete` construct against this
         :class:`.TableClause`.
 
@@ -1140,7 +1248,7 @@ class TableClause(Immutable, FromClause):
 
         """
 
-        return delete(self, whereclause, **kwargs)
+        return dml.Delete(self, whereclause, **kwargs)
 
     @property
     def _from_objects(self):
@@ -1552,6 +1660,42 @@ class CompoundSelect(SelectBase):
         self._bind = bind
     bind = property(bind, _set_bind)
 
+
+class HasPrefixes(object):
+    _prefixes = ()
+
+    @_generative
+    def prefix_with(self, *expr, **kw):
+        """Add one or more expressions following the statement keyword, i.e.
+        SELECT, INSERT, UPDATE, or DELETE. Generative.
+
+        This is used to support backend-specific prefix keywords such as those
+        provided by MySQL.
+
+        E.g.::
+
+            stmt = table.insert().prefix_with("LOW_PRIORITY", dialect="mysql")
+
+        Multiple prefixes can be specified by multiple calls
+        to :meth:`.prefix_with`.
+
+        :param \*expr: textual or :class:`.ClauseElement` construct which
+         will be rendered following the INSERT, UPDATE, or DELETE
+         keyword.
+        :param \**kw: A single keyword 'dialect' is accepted.  This is an
+         optional string dialect name which will
+         limit rendering of this prefix to only that dialect.
+
+        """
+        dialect = kw.pop('dialect', None)
+        if kw:
+            raise exc.ArgumentError("Unsupported argument(s): %s" %
+                            ",".join(kw))
+        self._setup_prefixes(expr, dialect)
+
+    def _setup_prefixes(self, prefixes, dialect=None):
+        self._prefixes = self._prefixes + tuple(
+                            [(_literal_as_text(p), dialect) for p in prefixes])
 
 class Select(HasPrefixes, SelectBase):
     """Represents a ``SELECT`` statement.

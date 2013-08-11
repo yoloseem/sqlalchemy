@@ -13,8 +13,7 @@ from __future__ import with_statement
 import sys
 from .. import exc, util, log, interfaces
 from ..sql import expression, util as sql_util, schema, ddl
-from ..sql.base import Compiled
-from .interfaces import Connectable
+from .interfaces import Connectable, Compiled
 from .util import _distill_params
 import contextlib
 

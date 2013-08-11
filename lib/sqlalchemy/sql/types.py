@@ -16,7 +16,7 @@ import datetime as dt
 import codecs
 
 from .types_base import TypeEngine, TypeDecorator, UserDefinedType, \
-            NULLTYPE, NullType
+            NULLTYPE, NullType, to_instance
 from .default_comparator import _DefaultColumnComparator
 from .. import exc, util, processors
 from . import operators, schema

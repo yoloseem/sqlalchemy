@@ -33,7 +33,7 @@ import inspect
 from .. import exc, util, event, events, inspection
 from . import visitors, types_base as sqltypes_base
 from . import selectable, elements
-from .base import SchemaItem, _bind_or_error, ColumnCollection
+from .base import _bind_or_error, ColumnCollection
 
 import collections
 import sqlalchemy
@@ -60,8 +60,40 @@ def _validate_dialect_kwargs(kwargs, name):
             raise TypeError("Additional arguments should be "
                     "named <dialectname>_<argument>, got '%s'" % k)
 
-inspection._self_inspects(SchemaItem)
 
+class SchemaItem(events.SchemaEventTarget, visitors.Visitable):
+    """Base class for items that define a database schema."""
+
+    __visit_name__ = 'schema_item'
+    quote = None
+
+    def _init_items(self, *args):
+        """Initialize the list of child items for this SchemaItem."""
+
+        for item in args:
+            if item is not None:
+                item._set_parent_with_dispatch(self)
+
+    def get_children(self, **kwargs):
+        """used to allow SchemaVisitor access"""
+        return []
+
+    def __repr__(self):
+        return util.generic_repr(self)
+
+    @util.memoized_property
+    def info(self):
+        """Info dictionary associated with the object, allowing user-defined
+        data to be associated with this :class:`.SchemaItem`.
+
+        The dictionary is automatically generated when first accessed.
+        It can also be specified in the constructor of some objects,
+        such as :class:`.Table` and :class:`.Column`.
+
+        """
+        return {}
+
+inspection._self_inspects(SchemaItem)
 
 class Table(SchemaItem, selectable.TableClause):
     """Represent a table in a database.

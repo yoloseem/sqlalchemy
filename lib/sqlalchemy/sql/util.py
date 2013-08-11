@@ -5,19 +5,17 @@
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
 from .. import exc, util
-from . import elements, schema
+from . import elements, schema, adapters, selectable, base
+from .base import _from_objects
 from . import operators, visitors
 from itertools import chain
 from collections import deque
-
 
 
 def is_column(col):
     """True if ``col`` is an instance of :class:`.ColumnElement`."""
 
     return isinstance(col, elements.ColumnElement)
-
-
 
 
 def find_join_source(clauses, join_to):
@@ -84,7 +82,7 @@ def visit_binary_product(fn, expr):
     stack = []
 
     def visit(element):
-        if isinstance(element, (expression.ScalarSelect)):
+        if isinstance(element, (elements.ScalarSelect)):
             # we dont want to dig into correlated subqueries,
             # those are just column elements by themselves
             yield element
@@ -98,7 +96,7 @@ def visit_binary_product(fn, expr):
             for elem in element.get_children():
                 visit(elem)
         else:
-            if isinstance(element, expression.ColumnClause):
+            if isinstance(element, elements.ColumnClause):
                 yield element
             for elem in element.get_children():
                 for e in visit(elem):
@@ -147,9 +145,9 @@ def unwrap_order_by(clause):
     stack = deque([clause])
     while stack:
         t = stack.popleft()
-        if isinstance(t, expression.ColumnElement) and \
+        if isinstance(t, elements.ColumnElement) and \
             (
-                not isinstance(t, expression.UnaryExpression) or \
+                not isinstance(t, elements.UnaryExpression) or \
                 not operators.is_ordering_modifier(t.modifier)
             ):
             cols.add(t)
@@ -179,9 +177,9 @@ def surface_selectables(clause):
     while stack:
         elem = stack.pop()
         yield elem
-        if isinstance(elem, expression.Join):
+        if isinstance(elem, selectable.Join):
             stack.extend((elem.left, elem.right))
-        elif isinstance(elem, expression.FromGrouping):
+        elif isinstance(elem, selectable.FromGrouping):
             stack.append(elem.element)
 
 def selectables_overlap(left, right):
@@ -255,11 +253,11 @@ def expression_as_ddl(clause):
 
     """
     def repl(element):
-        if isinstance(element, expression.BindParameter):
-            return expression.literal_column(_quote_ddl_expr(element.value))
-        elif isinstance(element, expression.ColumnClause) and \
+        if isinstance(element, elements.BindParameter):
+            return elements.literal_column(_quote_ddl_expr(element.value))
+        elif isinstance(element, elements.ColumnClause) and \
                 element.table is not None:
-            col = expression.column(element.name)
+            col = elements.ColumnClause(element.name)
             col.quote = element.quote
             return col
         else:
@@ -275,119 +273,20 @@ def adapt_criterion_to_null(crit, nulls):
     """
 
     def visit_binary(binary):
-        if isinstance(binary.left, expression.BindParameter) \
+        if isinstance(binary.left, elements.BindParameter) \
             and binary.left._identifying_key in nulls:
             # reverse order if the NULL is on the left side
             binary.left = binary.right
-            binary.right = expression.null()
+            binary.right = elements.Null()
             binary.operator = operators.is_
             binary.negate = operators.isnot
-        elif isinstance(binary.right, expression.BindParameter) \
+        elif isinstance(binary.right, elements.BindParameter) \
             and binary.right._identifying_key in nulls:
-            binary.right = expression.null()
+            binary.right = elements.Null()
             binary.operator = operators.is_
             binary.negate = operators.isnot
 
     return visitors.cloned_traverse(crit, {}, {'binary': visit_binary})
-
-
-def join_condition(a, b, ignore_nonexistent_tables=False,
-                            a_subset=None,
-                            consider_as_foreign_keys=None):
-    """create a join condition between two tables or selectables.
-
-    e.g.::
-
-        join_condition(tablea, tableb)
-
-    would produce an expression along the lines of::
-
-        tablea.c.id==tableb.c.tablea_id
-
-    The join is determined based on the foreign key relationships
-    between the two selectables.   If there are multiple ways
-    to join, or no way to join, an error is raised.
-
-    :param ignore_nonexistent_tables:  Deprecated - this
-    flag is no longer used.  Only resolution errors regarding
-    the two given tables are propagated.
-
-    :param a_subset: An optional expression that is a sub-component
-    of ``a``.  An attempt will be made to join to just this sub-component
-    first before looking at the full ``a`` construct, and if found
-    will be successful even if there are other ways to join to ``a``.
-    This allows the "right side" of a join to be passed thereby
-    providing a "natural join".
-
-    """
-    crit = []
-    constraints = set()
-
-    for left in (a_subset, a):
-        if left is None:
-            continue
-        for fk in sorted(
-                    b.foreign_keys,
-                    key=lambda fk: fk.parent._creation_order):
-            if consider_as_foreign_keys is not None and \
-                fk.parent not in consider_as_foreign_keys:
-                continue
-            try:
-                col = fk.get_referent(left)
-            except exc.NoReferenceError as nrte:
-                if nrte.table_name == left.name:
-                    raise
-                else:
-                    continue
-
-            if col is not None:
-                crit.append(col == fk.parent)
-                constraints.add(fk.constraint)
-        if left is not b:
-            for fk in sorted(
-                        left.foreign_keys,
-                        key=lambda fk: fk.parent._creation_order):
-                if consider_as_foreign_keys is not None and \
-                    fk.parent not in consider_as_foreign_keys:
-                    continue
-                try:
-                    col = fk.get_referent(b)
-                except exc.NoReferenceError as nrte:
-                    if nrte.table_name == b.name:
-                        raise
-                    else:
-                        # this is totally covered.  can't get
-                        # coverage to mark it.
-                        continue
-
-                if col is not None:
-                    crit.append(col == fk.parent)
-                    constraints.add(fk.constraint)
-        if crit:
-            break
-
-    if len(crit) == 0:
-        if isinstance(b, expression.FromGrouping):
-            hint = " Perhaps you meant to convert the right side to a "\
-                                "subquery using alias()?"
-        else:
-            hint = ""
-        raise exc.NoForeignKeysError(
-            "Can't find any foreign key relationships "
-            "between '%s' and '%s'.%s" % (a.description, b.description, hint))
-    elif len(constraints) > 1:
-        raise exc.AmbiguousForeignKeysError(
-            "Can't determine join between '%s' and '%s'; "
-            "tables have more than one foreign key "
-            "constraint relationship between them. "
-            "Please specify the 'onclause' of this "
-            "join explicitly." % (a.description, b.description))
-    elif len(crit) == 1:
-        return (crit[0])
-    else:
-        return and_(*crit)
-
-
 
 
 def splice_joins(left, right, stop_on=None):
@@ -396,11 +295,11 @@ def splice_joins(left, right, stop_on=None):
 
     stack = [(right, None)]
 
-    adapter = ClauseAdapter(left)
+    adapter = adapters.ClauseAdapter(left)
     ret = None
     while stack:
         (right, prevright) = stack.pop()
-        if isinstance(right, expression.Join) and right is not stop_on:
+        if isinstance(right, selectable.Join) and right is not stop_on:
             right = right._clone()
             right._reset_exported()
             right.onclause = adapter.traverse(right.onclause)
@@ -484,7 +383,7 @@ def reduce_columns(columns, *clauses, **kw):
             if clause is not None:
                 visitors.traverse(clause, {}, {'binary': visit_binary})
 
-    return expression.ColumnSet(columns.difference(omit))
+    return base.ColumnSet(columns.difference(omit))
 
 
 def criterion_as_pairs(expression, consider_as_foreign_keys=None,
@@ -503,8 +402,8 @@ def criterion_as_pairs(expression, consider_as_foreign_keys=None,
     def visit_binary(binary):
         if not any_operator and binary.operator is not operators.eq:
             return
-        if not isinstance(binary.left, sql.ColumnElement) or \
-                    not isinstance(binary.right, sql.ColumnElement):
+        if not isinstance(binary.left, elements.ColumnElement) or \
+                    not isinstance(binary.right, elements.ColumnElement):
             return
 
         if consider_as_foreign_keys:

@@ -4,25 +4,7 @@
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
-"""Defines the base components of SQL expression trees.
-
-All components are derived from a common base class
-:class:`.ClauseElement`.  Common behaviors are organized
-based on class hierarchies, in some cases via mixins.
-
-All object construction from this package occurs via functions which
-in some cases will construct composite :class:`.ClauseElement` structures
-together, and in other cases simply return a single :class:`.ClauseElement`
-constructed directly.  The function interface affords a more "DSL-ish"
-feel to constructing SQL expressions and also allows future class
-reorganizations.
-
-Even though classes are not constructed directly from the outside,
-most classes which have additional public methods are considered to be
-public (i.e. have no leading underscore).  Other classes which are
-"semi-public" are marked with a single leading underscore; these
-classes usually have few or no public methods and are less guaranteed
-to stay the same in future releases.
+"""Defines the public namespace for SQL expression constructs.
 
 """
 
@@ -35,8 +17,8 @@ from .elements import ClauseElement, ColumnElement,\
   Label, Cast, Case, ColumnClause, TextClause, Over, Null, \
   True_, False_, BinaryExpression, Tuple, TypeClause, Extract, \
   Grouping, ScalarSelect, and_, or_, not_, null, false, true, \
-  collate, asc, desc, cast, extract, literal_column, between,\
-  case, distinct, exists, label, literal, outparam, \
+  collate, cast, extract, literal_column, between,\
+  case, exists, label, literal, outparam, \
   tuple_, type_coerce
 
 from .base import ColumnCollection, Generative, Executable
@@ -46,7 +28,7 @@ from .selectable import Alias, Join, Select, Selectable, TableClause, \
         alias, except_, except_all, intersect, intersect_all, \
         subquery, union, union_all
 
-from .dml import Insert, Update, Delete, insert, update, delete
+from .dml import Insert, Update, Delete
 
 
 __all__ = [
@@ -69,12 +51,23 @@ table = public_factory(TableClause)
 column = public_factory(ColumnClause)
 over = public_factory(Over)
 
+nullsfirst = public_factory(UnaryExpression.nullsfirst)
+nullslast = public_factory(UnaryExpression.nullslast)
+asc = public_factory(UnaryExpression.asc)
+desc = public_factory(UnaryExpression.desc)
+distinct = public_factory(UnaryExpression.distinct)
+
 join = public_factory(Join._create_join)
 outerjoin = public_factory(Join._create_outerjoin)
 
-# legacy, some outside users may be calling this
-_Executable = Executable
+insert = public_factory(Insert)
+update = public_factory(Update)
+delete = public_factory(Delete)
+
+
+
 # old names for compatibility
+_Executable = Executable
 _BindParamClause = BindParameter
 _Label = Label
 _SelectBase = SelectBase

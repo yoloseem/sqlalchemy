@@ -67,15 +67,13 @@ from .visitors import ClauseVisitor
 __tmp = list(locals().keys())
 __all__ = sorted([i for i in __tmp if not i.startswith('__')])
 
+def __go():
+    from .annotation import _prepare_annotations
+    from .elements import AnnotatedColumnElement
+    from .selectable import AnnotatedFromClause
+    _prepare_annotations(ColumnElement, AnnotatedColumnElement)
+    _prepare_annotations(FromClause, AnnotatedFromClause)
 
-from . import schema, expression
-
-from .annotation import _prepare_annotations
-from .elements import ColumnElement, AnnotatedColumnElement
-from .selectable import FromClause, AnnotatedFromClause
-_prepare_annotations(ColumnElement, AnnotatedColumnElement)
-_prepare_annotations(FromClause, AnnotatedFromClause)
-
-from .. import util as _sa_util
-_sa_util.importlater.resolve_all("sqlalchemy.sql")
-import sqlalchemy
+    from .. import util as _sa_util
+    _sa_util.importlater.resolve_all("sqlalchemy.sql")
+__go()
