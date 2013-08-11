@@ -24,9 +24,10 @@ import datetime as dt
 import codecs
 
 from .types_base import TypeEngine, TypeDecorator, UserDefinedType, \
-            NULLTYPE, _DateAffinity, NullType
+            NULLTYPE, NullType
+from .default_comparator import _DefaultColumnComparator
 from .. import exc, util, processors
-from . import operators, schema, elements
+from . import operators, schema
 from ..util import pickle
 import decimal
 default = util.importlater("sqlalchemy.engine", "default")
@@ -36,9 +37,12 @@ if util.jython:
     import array
 
 
+
 class StandardSQLOperators(TypeEngine):
-    class Comparator(elements._DefaultColumnComparator, TypeEngine.Comparator):
+    class Comparator(_DefaultColumnComparator, TypeEngine.Comparator):
         pass
+
+    comparator_factory = Comparator
 
     def coerce_compared_value(self, op, value):
         """Suggest a type for a 'coerced' Python value in an expression.
@@ -66,11 +70,37 @@ class StandardSQLOperators(TypeEngine):
         else:
             return _coerced_type
 
+class _DateAffinity(object):
+    """Mixin date/time specific expression adaptations.
+
+    Rules are implemented within Date,Time,Interval,DateTime, Numeric,
+    Integer. Based on http://www.postgresql.org/docs/current/static
+    /functions-datetime.html.
+
+    """
+
+    @property
+    def _expression_adaptations(self):
+        raise NotImplementedError()
+
+    class Comparator(StandardSQLOperators.Comparator):
+        _blank_dict = util.immutabledict()
+
+        def _adapt_expression(self, op, other_comparator):
+            othertype = other_comparator.type._type_affinity
+            return op, \
+                    self.type._expression_adaptations.get(op, self._blank_dict).\
+                    get(othertype, NULLTYPE)
+    comparator_factory = Comparator
+
+
+
+
 class Concatenable(object):
     """A mixin that marks a type as supporting 'concatenation',
     typically strings."""
 
-    class Comparator(StandardSQLOperators):
+    class Comparator(StandardSQLOperators.Comparator):
         def _adapt_expression(self, op, other_comparator):
             if op is operators.add and isinstance(other_comparator,
                     (Concatenable.Comparator, NullType.Comparator)):
