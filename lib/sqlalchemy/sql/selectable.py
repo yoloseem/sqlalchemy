@@ -1,11 +1,14 @@
-from .elements import ClauseElement, TextClause, _clone, ClauseList
+from .elements import ClauseElement, TextClause, _clone, ClauseList, \
+        _literal_as_text, _interpret_as_column_or_from, ScalarSelect, _expand_cloned,\
+        _select_iterables
 from .base import Immutable, Executable, _generative, HasPrefixes, \
-            ColumnCollection, ColumnSet
+            ColumnCollection, ColumnSet, _from_objects
 from .. import inspection
 from .. import util
 from .. import exc
 from operator import attrgetter
 from .annotation import Annotated
+import itertools
 
 def _interpret_as_from(element):
     insp = inspection.inspect(element, raiseerr=False)
@@ -25,140 +28,178 @@ def _interpret_as_select(element):
     return element
 
 
-def select(columns=None, whereclause=None, from_obj=[], **kwargs):
-    """Returns a ``SELECT`` clause element.
 
-    Similar functionality is also available via the :func:`select()`
-    method on any :class:`.FromClause`.
 
-    The returned object is an instance of :class:`.Select`.
 
-    All arguments which accept :class:`.ClauseElement` arguments also accept
-    string arguments, which will be converted as appropriate into
-    either :func:`text()` or :func:`literal_column()` constructs.
+def subquery(alias, *args, **kwargs):
+    """Return an :class:`.Alias` object derived
+    from a :class:`.Select`.
 
-    .. seealso::
+    name
+      alias name
 
-        :ref:`coretutorial_selecting` - Core Tutorial description of
-        :func:`.select`.
+    \*args, \**kwargs
 
-    :param columns:
-      A list of :class:`.ClauseElement` objects, typically
-      :class:`.ColumnElement` objects or subclasses, which will form the
-      columns clause of the resulting statement. For all members which are
-      instances of :class:`.Selectable`, the individual :class:`.ColumnElement`
-      members of the :class:`.Selectable` will be added individually to the
-      columns clause. For example, specifying a
-      :class:`~sqlalchemy.schema.Table` instance will result in all the
-      contained :class:`~sqlalchemy.schema.Column` objects within to be added
-      to the columns clause.
-
-      This argument is not present on the form of :func:`select()`
-      available on :class:`~sqlalchemy.schema.Table`.
-
-    :param whereclause:
-      A :class:`.ClauseElement` expression which will be used to form the
-      ``WHERE`` clause.
-
-    :param from_obj:
-      A list of :class:`.ClauseElement` objects which will be added to the
-      ``FROM`` clause of the resulting statement. Note that "from" objects are
-      automatically located within the columns and whereclause ClauseElements.
-      Use this parameter to explicitly specify "from" objects which are not
-      automatically locatable. This could include
-      :class:`~sqlalchemy.schema.Table` objects that aren't otherwise present,
-      or :class:`.Join` objects whose presence will supercede that of the
-      :class:`~sqlalchemy.schema.Table` objects already located in the other
-      clauses.
-
-    :param autocommit:
-      Deprecated.  Use .execution_options(autocommit=<True|False>)
-      to set the autocommit option.
-
-    :param bind=None:
-      an :class:`~.base.Engine` or :class:`~.base.Connection` instance
-      to which the
-      resulting :class:`.Select` object will be bound.  The :class:`.Select`
-      object will otherwise automatically bind to whatever
-      :class:`~.base.Connectable` instances can be located within its contained
-      :class:`.ClauseElement` members.
-
-    :param correlate=True:
-      indicates that this :class:`.Select` object should have its
-      contained :class:`.FromClause` elements "correlated" to an enclosing
-      :class:`.Select` object.  This means that any :class:`.ClauseElement`
-      instance within the "froms" collection of this :class:`.Select`
-      which is also present in the "froms" collection of an
-      enclosing select will not be rendered in the ``FROM`` clause
-      of this select statement.
-
-    :param distinct=False:
-      when ``True``, applies a ``DISTINCT`` qualifier to the columns
-      clause of the resulting statement.
-
-      The boolean argument may also be a column expression or list
-      of column expressions - this is a special calling form which
-      is understood by the Postgresql dialect to render the
-      ``DISTINCT ON (<columns>)`` syntax.
-
-      ``distinct`` is also available via the :meth:`~.Select.distinct`
-      generative method.
-
-    :param for_update=False:
-      when ``True``, applies ``FOR UPDATE`` to the end of the
-      resulting statement.
-
-      Certain database dialects also support
-      alternate values for this parameter:
-
-      * With the MySQL dialect, the value ``"read"`` translates to
-        ``LOCK IN SHARE MODE``.
-      * With the Oracle and Postgresql dialects, the value ``"nowait"``
-        translates to ``FOR UPDATE NOWAIT``.
-      * With the Postgresql dialect, the values "read" and ``"read_nowait"``
-        translate to ``FOR SHARE`` and ``FOR SHARE NOWAIT``, respectively.
-
-        .. versionadded:: 0.7.7
-
-    :param group_by:
-      a list of :class:`.ClauseElement` objects which will comprise the
-      ``GROUP BY`` clause of the resulting select.
-
-    :param having:
-      a :class:`.ClauseElement` that will comprise the ``HAVING`` clause
-      of the resulting select when ``GROUP BY`` is used.
-
-    :param limit=None:
-      a numerical value which usually compiles to a ``LIMIT``
-      expression in the resulting select.  Databases that don't
-      support ``LIMIT`` will attempt to provide similar
-      functionality.
-
-    :param offset=None:
-      a numeric value which usually compiles to an ``OFFSET``
-      expression in the resulting select.  Databases that don't
-      support ``OFFSET`` will attempt to provide similar
-      functionality.
-
-    :param order_by:
-      a scalar or list of :class:`.ClauseElement` objects which will
-      comprise the ``ORDER BY`` clause of the resulting select.
-
-    :param use_labels=False:
-      when ``True``, the statement will be generated using labels
-      for each column in the columns clause, which qualify each
-      column with its parent table's (or aliases) name so that name
-      conflicts between columns in different tables don't occur.
-      The format of the label is <tablename>_<column>.  The "c"
-      collection of the resulting :class:`.Select` object will use these
-      names as well for targeting column members.
-
-      use_labels is also available via the :meth:`~.SelectBase.apply_labels`
-      generative method.
+      all other arguments are delivered to the
+      :func:`select` function.
 
     """
-    return Select(columns, whereclause=whereclause, from_obj=from_obj,
-                  **kwargs)
+    return Select(*args, **kwargs).alias(alias)
+
+
+
+
+
+def union(*selects, **kwargs):
+    """Return a ``UNION`` of multiple selectables.
+
+    The returned object is an instance of
+    :class:`.CompoundSelect`.
+
+    A similar :func:`union()` method is available on all
+    :class:`.FromClause` subclasses.
+
+    \*selects
+      a list of :class:`.Select` instances.
+
+    \**kwargs
+       available keyword arguments are the same as those of
+       :func:`select`.
+
+    """
+    return CompoundSelect(CompoundSelect.UNION, *selects, **kwargs)
+
+
+def union_all(*selects, **kwargs):
+    """Return a ``UNION ALL`` of multiple selectables.
+
+    The returned object is an instance of
+    :class:`.CompoundSelect`.
+
+    A similar :func:`union_all()` method is available on all
+    :class:`.FromClause` subclasses.
+
+    \*selects
+      a list of :class:`.Select` instances.
+
+    \**kwargs
+      available keyword arguments are the same as those of
+      :func:`select`.
+
+    """
+    return CompoundSelect(CompoundSelect.UNION_ALL, *selects, **kwargs)
+
+
+def except_(*selects, **kwargs):
+    """Return an ``EXCEPT`` of multiple selectables.
+
+    The returned object is an instance of
+    :class:`.CompoundSelect`.
+
+    \*selects
+      a list of :class:`.Select` instances.
+
+    \**kwargs
+      available keyword arguments are the same as those of
+      :func:`select`.
+
+    """
+    return CompoundSelect(CompoundSelect.EXCEPT, *selects, **kwargs)
+
+
+def except_all(*selects, **kwargs):
+    """Return an ``EXCEPT ALL`` of multiple selectables.
+
+    The returned object is an instance of
+    :class:`.CompoundSelect`.
+
+    \*selects
+      a list of :class:`.Select` instances.
+
+    \**kwargs
+      available keyword arguments are the same as those of
+      :func:`select`.
+
+    """
+    return CompoundSelect(CompoundSelect.EXCEPT_ALL, *selects, **kwargs)
+
+
+def intersect(*selects, **kwargs):
+    """Return an ``INTERSECT`` of multiple selectables.
+
+    The returned object is an instance of
+    :class:`.CompoundSelect`.
+
+    \*selects
+      a list of :class:`.Select` instances.
+
+    \**kwargs
+      available keyword arguments are the same as those of
+      :func:`select`.
+
+    """
+    return CompoundSelect(CompoundSelect.INTERSECT, *selects, **kwargs)
+
+
+def intersect_all(*selects, **kwargs):
+    """Return an ``INTERSECT ALL`` of multiple selectables.
+
+    The returned object is an instance of
+    :class:`.CompoundSelect`.
+
+    \*selects
+      a list of :class:`.Select` instances.
+
+    \**kwargs
+      available keyword arguments are the same as those of
+      :func:`select`.
+
+    """
+    return CompoundSelect(CompoundSelect.INTERSECT_ALL, *selects, **kwargs)
+
+
+def alias(selectable, name=None, flat=False):
+    """Return an :class:`.Alias` object.
+
+    An :class:`.Alias` represents any :class:`.FromClause`
+    with an alternate name assigned within SQL, typically using the ``AS``
+    clause when generated, e.g. ``SELECT * FROM table AS aliasname``.
+
+    Similar functionality is available via the
+    :meth:`~.FromClause.alias` method
+    available on all :class:`.FromClause` subclasses.
+
+    When an :class:`.Alias` is created from a :class:`.Table` object,
+    this has the effect of the table being rendered
+    as ``tablename AS aliasname`` in a SELECT statement.
+
+    For :func:`.select` objects, the effect is that of creating a named
+    subquery, i.e. ``(select ...) AS aliasname``.
+
+    The ``name`` parameter is optional, and provides the name
+    to use in the rendered SQL.  If blank, an "anonymous" name
+    will be deterministically generated at compile time.
+    Deterministic means the name is guaranteed to be unique against
+    other constructs used in the same statement, and will also be the
+    same name for each successive compilation of the same statement
+    object.
+
+    :param selectable: any :class:`.FromClause` subclass,
+        such as a table, select statement, etc.
+
+    :param name: string name to be assigned as the alias.
+        If ``None``, a name will be deterministically generated
+        at compile time.
+
+    :param flat: Will be passed through to if the given selectable
+     is an instance of :class:`.Join` - see :meth:`.Join.alias`
+     for details.
+
+     .. versionadded:: 0.9.0
+
+    """
+    return selectable.alias(name=name, flat=flat)
+
 
 
 
@@ -223,7 +264,7 @@ class FromClause(Selectable):
 
         """
 
-        return select([self], whereclause, **params)
+        return Select([self], whereclause, **params)
 
     def join(self, right, onclause=None, isouter=False):
         """return a join of this :class:`.FromClause` against another
@@ -502,6 +543,62 @@ class Join(FromClause):
             self.onclause = onclause
 
         self.isouter = isouter
+
+    @classmethod
+    def _create_outerjoin(cls, left, right, onclause=None):
+        """Return an ``OUTER JOIN`` clause element.
+
+        The returned object is an instance of :class:`.Join`.
+
+        Similar functionality is also available via the
+        :meth:`~.FromClause.outerjoin()` method on any
+        :class:`.FromClause`.
+
+        :param left: The left side of the join.
+
+        :param right: The right side of the join.
+
+        :param onclause:  Optional criterion for the ``ON`` clause, is
+          derived from foreign key relationships established between
+          left and right otherwise.
+
+        To chain joins together, use the :meth:`.FromClause.join` or
+        :meth:`.FromClause.outerjoin` methods on the resulting
+        :class:`.Join` object.
+
+        """
+        return cls(left, right, onclause, isouter=True)
+
+
+    @classmethod
+    def _create_join(cls, left, right, onclause=None, isouter=False):
+        """Return a ``JOIN`` clause element (regular inner join).
+
+        The returned object is an instance of :class:`.Join`.
+
+        Similar functionality is also available via the
+        :meth:`~.FromClause.join()` method on any
+        :class:`.FromClause`.
+
+        :param left: The left side of the join.
+
+        :param right: The right side of the join.
+
+        :param onclause:  Optional criterion for the ``ON`` clause, is
+          derived from foreign key relationships established between
+          left and right otherwise.
+
+        :param isouter: if True, produce an outer join; synonymous
+         with :func:`.outerjoin`.
+
+        To chain joins together, use the :meth:`.FromClause.join` or
+        :meth:`.FromClause.outerjoin` methods on the resulting
+        :class:`.Join` object.
+
+
+        """
+        return cls(left, right, onclause, isouter)
+
 
     @property
     def description(self):
@@ -903,11 +1000,9 @@ class FromGrouping(FromClause):
 class TableClause(Immutable, FromClause):
     """Represents a minimal "table" construct.
 
-    The constructor for :class:`.TableClause` is the
-    :func:`~.expression.table` function.   This produces
-    a lightweight table object that has only a name and a
+    This is a lightweight table object that has only a name and a
     collection of columns, which are typically produced
-    by the :func:`~.expression.column` function::
+    by the :func:`.expression.column` function::
 
         from sqlalchemy.sql import table, column
 
@@ -943,6 +1038,25 @@ class TableClause(Immutable, FromClause):
     """No PK or default support so no autoincrement column."""
 
     def __init__(self, name, *columns):
+        """Produce a new :class:`.TableClause`.
+
+        The object returned is an instance of :class:`.TableClause`, which
+        represents the "syntactical" portion of the schema-level
+        :class:`~.schema.Table` object.
+        It may be used to construct lightweight table constructs.
+
+        Note that the :func:`.expression.table` function is not part of
+        the ``sqlalchemy`` namespace.  It must be imported from the
+        ``sql`` package::
+
+            from sqlalchemy.sql import table, column
+
+        :param name: Name of the table.
+
+        :param columns: A collection of :func:`.expression.column` constructs.
+
+        """
+
         super(TableClause, self).__init__()
         self.name = self.fullname = name
         self._columns = ColumnCollection()
@@ -1442,14 +1556,6 @@ class CompoundSelect(SelectBase):
 class Select(HasPrefixes, SelectBase):
     """Represents a ``SELECT`` statement.
 
-    .. seealso::
-
-        :func:`~.expression.select` - the function which creates
-        a :class:`.Select` object.
-
-        :ref:`coretutorial_selecting` - Core Tutorial description
-        of :func:`.select`.
-
     """
 
     __visit_name__ = 'select'
@@ -1463,7 +1569,7 @@ class Select(HasPrefixes, SelectBase):
     _memoized_property = SelectBase._memoized_property
 
     def __init__(self,
-                columns,
+                columns=None,
                 whereclause=None,
                 from_obj=None,
                 distinct=False,
@@ -1471,14 +1577,133 @@ class Select(HasPrefixes, SelectBase):
                 correlate=True,
                 prefixes=None,
                 **kwargs):
-        """Construct a Select object.
+        """Construct a new :class:`.Select`.
 
-        The public constructor for Select is the
-        :func:`select` function; see that function for
-        argument descriptions.
+        Similar functionality is also available via the :meth:`.FromClause.select`
+        method on any :class:`.FromClause`.
 
-        Additional generative and mutator methods are available on the
-        :class:`SelectBase` superclass.
+        All arguments which accept :class:`.ClauseElement` arguments also accept
+        string arguments, which will be converted as appropriate into
+        either :func:`text()` or :func:`literal_column()` constructs.
+
+        .. seealso::
+
+            :ref:`coretutorial_selecting` - Core Tutorial description of
+            :func:`.select`.
+
+        :param columns:
+          A list of :class:`.ClauseElement` objects, typically
+          :class:`.ColumnElement` objects or subclasses, which will form the
+          columns clause of the resulting statement. For all members which are
+          instances of :class:`.Selectable`, the individual :class:`.ColumnElement`
+          members of the :class:`.Selectable` will be added individually to the
+          columns clause. For example, specifying a
+          :class:`~sqlalchemy.schema.Table` instance will result in all the
+          contained :class:`~sqlalchemy.schema.Column` objects within to be added
+          to the columns clause.
+
+          This argument is not present on the form of :func:`select()`
+          available on :class:`~sqlalchemy.schema.Table`.
+
+        :param whereclause:
+          A :class:`.ClauseElement` expression which will be used to form the
+          ``WHERE`` clause.
+
+        :param from_obj:
+          A list of :class:`.ClauseElement` objects which will be added to the
+          ``FROM`` clause of the resulting statement. Note that "from" objects are
+          automatically located within the columns and whereclause ClauseElements.
+          Use this parameter to explicitly specify "from" objects which are not
+          automatically locatable. This could include
+          :class:`~sqlalchemy.schema.Table` objects that aren't otherwise present,
+          or :class:`.Join` objects whose presence will supercede that of the
+          :class:`~sqlalchemy.schema.Table` objects already located in the other
+          clauses.
+
+        :param autocommit:
+          Deprecated.  Use .execution_options(autocommit=<True|False>)
+          to set the autocommit option.
+
+        :param bind=None:
+          an :class:`~.base.Engine` or :class:`~.base.Connection` instance
+          to which the
+          resulting :class:`.Select` object will be bound.  The :class:`.Select`
+          object will otherwise automatically bind to whatever
+          :class:`~.base.Connectable` instances can be located within its contained
+          :class:`.ClauseElement` members.
+
+        :param correlate=True:
+          indicates that this :class:`.Select` object should have its
+          contained :class:`.FromClause` elements "correlated" to an enclosing
+          :class:`.Select` object.  This means that any :class:`.ClauseElement`
+          instance within the "froms" collection of this :class:`.Select`
+          which is also present in the "froms" collection of an
+          enclosing select will not be rendered in the ``FROM`` clause
+          of this select statement.
+
+        :param distinct=False:
+          when ``True``, applies a ``DISTINCT`` qualifier to the columns
+          clause of the resulting statement.
+
+          The boolean argument may also be a column expression or list
+          of column expressions - this is a special calling form which
+          is understood by the Postgresql dialect to render the
+          ``DISTINCT ON (<columns>)`` syntax.
+
+          ``distinct`` is also available via the :meth:`~.Select.distinct`
+          generative method.
+
+        :param for_update=False:
+          when ``True``, applies ``FOR UPDATE`` to the end of the
+          resulting statement.
+
+          Certain database dialects also support
+          alternate values for this parameter:
+
+          * With the MySQL dialect, the value ``"read"`` translates to
+            ``LOCK IN SHARE MODE``.
+          * With the Oracle and Postgresql dialects, the value ``"nowait"``
+            translates to ``FOR UPDATE NOWAIT``.
+          * With the Postgresql dialect, the values "read" and ``"read_nowait"``
+            translate to ``FOR SHARE`` and ``FOR SHARE NOWAIT``, respectively.
+
+            .. versionadded:: 0.7.7
+
+        :param group_by:
+          a list of :class:`.ClauseElement` objects which will comprise the
+          ``GROUP BY`` clause of the resulting select.
+
+        :param having:
+          a :class:`.ClauseElement` that will comprise the ``HAVING`` clause
+          of the resulting select when ``GROUP BY`` is used.
+
+        :param limit=None:
+          a numerical value which usually compiles to a ``LIMIT``
+          expression in the resulting select.  Databases that don't
+          support ``LIMIT`` will attempt to provide similar
+          functionality.
+
+        :param offset=None:
+          a numeric value which usually compiles to an ``OFFSET``
+          expression in the resulting select.  Databases that don't
+          support ``OFFSET`` will attempt to provide similar
+          functionality.
+
+        :param order_by:
+          a scalar or list of :class:`.ClauseElement` objects which will
+          comprise the ``ORDER BY`` clause of the resulting select.
+
+        :param use_labels=False:
+          when ``True``, the statement will be generated using labels
+          for each column in the columns clause, which qualify each
+          column with its parent table's (or aliases) name so that name
+          conflicts between columns in different tables don't occur.
+          The format of the label is <tablename>_<column>.  The "c"
+          collection of the resulting :class:`.Select` object will use these
+          names as well for targeting column members.
+
+          use_labels is also available via the :meth:`~.SelectBase.apply_labels`
+          generative method.
 
         """
         self._auto_correlate = correlate

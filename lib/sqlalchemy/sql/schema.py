@@ -881,7 +881,7 @@ class Column(SchemaItem, elements.ColumnClause):
                         "May not pass type_ positionally and as a keyword.")
                 type_ = args.pop(0)
 
-        super(Column, self).__init__(name, None, type_)
+        super(Column, self).__init__(name, type_)
         self.key = kwargs.pop('key', name)
         self.primary_key = kwargs.pop('primary_key', False)
         self.nullable = kwargs.pop('nullable', not self.primary_key)

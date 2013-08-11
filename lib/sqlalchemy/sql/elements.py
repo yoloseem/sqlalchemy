@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 from .. import util, exc, inspection
 from . import types_base as sqltypes
 from . import operators
@@ -5,7 +7,7 @@ from .visitors import Visitable
 from . import visitors
 from .annotation import Annotated
 import itertools
-from .base import Executable, PARSE_AUTOCOMMIT, Immutable, Generative, _generative
+from .base import Executable, PARSE_AUTOCOMMIT, Immutable, Generative, _generative, NO_ARG
 import re
 
 annotation = util.importlater("sqlalchemy.sql", "annotation")
@@ -323,6 +325,250 @@ def collate(expression, collation):
         expr,
         _literal_as_text(collation),
         operators.collate, type_=expr.type)
+
+def distinct(expr):
+    """Return a ``DISTINCT`` clause.
+
+    e.g.::
+
+        distinct(a)
+
+    renders::
+
+        DISTINCT a
+
+    """
+    expr = sqlutil._literal_as_binds(expr)
+    return UnaryExpression(expr,
+                operator=operators.distinct_op, type_=expr.type)
+
+
+def between(ctest, cleft, cright):
+    """Return a ``BETWEEN`` predicate clause.
+
+    Equivalent of SQL ``clausetest BETWEEN clauseleft AND clauseright``.
+
+    The :func:`between()` method on all
+    :class:`.ColumnElement` subclasses provides
+    similar functionality.
+
+    """
+    ctest = sqlutil._literal_as_binds(ctest)
+    return ctest.between(cleft, cright)
+
+
+def case(whens, value=None, else_=None):
+    """Produce a ``CASE`` statement.
+
+    whens
+      A sequence of pairs, or alternatively a dict,
+      to be translated into "WHEN / THEN" clauses.
+
+    value
+      Optional for simple case statements, produces
+      a column expression as in "CASE <expr> WHEN ..."
+
+    else\_
+      Optional as well, for case defaults produces
+      the "ELSE" portion of the "CASE" statement.
+
+    The expressions used for THEN and ELSE,
+    when specified as strings, will be interpreted
+    as bound values. To specify textual SQL expressions
+    for these, use the :func:`literal_column`
+    construct.
+
+    The expressions used for the WHEN criterion
+    may only be literal strings when "value" is
+    present, i.e. CASE table.somecol WHEN "x" THEN "y".
+    Otherwise, literal strings are not accepted
+    in this position, and either the text(<string>)
+    or literal(<string>) constructs must be used to
+    interpret raw string values.
+
+    Usage examples::
+
+      case([(orderline.c.qty > 100, item.c.specialprice),
+            (orderline.c.qty > 10, item.c.bulkprice)
+          ], else_=item.c.regularprice)
+      case(value=emp.c.type, whens={
+              'engineer': emp.c.salary * 1.1,
+              'manager':  emp.c.salary * 3,
+          })
+
+    Using :func:`literal_column()`, to allow for databases that
+    do not support bind parameters in the ``then`` clause.  The type
+    can be specified which determines the type of the :func:`case()` construct
+    overall::
+
+        case([(orderline.c.qty > 100,
+                literal_column("'greaterthan100'", String)),
+              (orderline.c.qty > 10, literal_column("'greaterthan10'",
+                String))
+            ], else_=literal_column("'lethan10'", String))
+
+    """
+
+    return Case(whens, value=value, else_=else_)
+
+
+def exists(*args, **kwargs):
+    """Return an ``EXISTS`` clause as applied to a :class:`.Select` object.
+
+    Calling styles are of the following forms::
+
+        # use on an existing select()
+        s = select([table.c.col1]).where(table.c.col2==5)
+        s = exists(s)
+
+        # construct a select() at once
+        exists(['*'], **select_arguments).where(criterion)
+
+        # columns argument is optional, generates "EXISTS (SELECT *)"
+        # by default.
+        exists().where(table.c.col2==5)
+
+    """
+    return Exists(*args, **kwargs)
+
+
+def literal(value, type_=None):
+    """Return a literal clause, bound to a bind parameter.
+
+    Literal clauses are created automatically when non- :class:`.ClauseElement`
+    objects (such as strings, ints, dates, etc.) are used in a comparison
+    operation with a :class:`.ColumnElement`
+    subclass, such as a :class:`~sqlalchemy.schema.Column` object.
+    Use this function to force the
+    generation of a literal clause, which will be created as a
+    :class:`BindParameter` with a bound value.
+
+    :param value: the value to be bound. Can be any Python object supported by
+        the underlying DB-API, or is translatable via the given type argument.
+
+    :param type\_: an optional :class:`~sqlalchemy.types.TypeEngine` which
+        will provide bind-parameter translation for this literal.
+
+    """
+    return BindParameter(None, value, type_=type_, unique=True)
+
+
+def tuple_(*expr):
+    """Return a SQL tuple.
+
+    Main usage is to produce a composite IN construct::
+
+        tuple_(table.c.col1, table.c.col2).in_(
+            [(1, 2), (5, 12), (10, 19)]
+        )
+
+    .. warning::
+
+        The composite IN construct is not supported by all backends,
+        and is currently known to work on Postgresql and MySQL,
+        but not SQLite.   Unsupported backends will raise
+        a subclass of :class:`~sqlalchemy.exc.DBAPIError` when such
+        an expression is invoked.
+
+    """
+    return Tuple(*expr)
+
+
+def type_coerce(expr, type_):
+    """Coerce the given expression into the given type,
+    on the Python side only.
+
+    :func:`.type_coerce` is roughly similar to :func:`.cast`, except no
+    "CAST" expression is rendered - the given type is only applied towards
+    expression typing and against received result values.
+
+    e.g.::
+
+        from sqlalchemy.types import TypeDecorator
+        import uuid
+
+        class AsGuid(TypeDecorator):
+            impl = String
+
+            def process_bind_param(self, value, dialect):
+                if value is not None:
+                    return str(value)
+                else:
+                    return None
+
+            def process_result_value(self, value, dialect):
+                if value is not None:
+                    return uuid.UUID(value)
+                else:
+                    return None
+
+        conn.execute(
+            select([type_coerce(mytable.c.ident, AsGuid)]).\\
+                    where(
+                        type_coerce(mytable.c.ident, AsGuid) ==
+                        uuid.uuid3(uuid.NAMESPACE_URL, 'bar')
+                    )
+        )
+
+    """
+    type_ = sqltypes.to_instance(type_)
+
+    if hasattr(expr, '__clause_expr__'):
+        return type_coerce(expr.__clause_expr__())
+    elif isinstance(expr, BindParameter):
+        bp = expr._clone()
+        bp.type = type_
+        return bp
+    elif not isinstance(expr, Visitable):
+        if expr is None:
+            return null()
+        else:
+            return literal(expr, type_=type_)
+    else:
+        return Label(None, expr, type_=type_)
+
+
+def label(name, obj):
+    """Return a :class:`Label` object for the
+    given :class:`.ColumnElement`.
+
+    A label changes the name of an element in the columns clause of a
+    ``SELECT`` statement, typically via the ``AS`` SQL keyword.
+
+    This functionality is more conveniently available via the
+    :func:`label()` method on :class:`.ColumnElement`.
+
+    name
+      label name
+
+    obj
+      a :class:`.ColumnElement`.
+
+    """
+    return Label(name, obj)
+
+
+
+
+
+
+def outparam(key, type_=None):
+    """Create an 'OUT' parameter for usage in functions (stored procedures),
+    for databases which support them.
+
+    The ``outparam`` can be used like a regular function parameter.
+    The "output" value will be available from the
+    :class:`~sqlalchemy.engine.ResultProxy` object via its ``out_parameters``
+    attribute, which returns a dictionary containing the values.
+
+    """
+    return BindParameter(
+                key, None, type_=type_, unique=False, isoutparam=True)
+
+
+
+
+
 
 
 def _const_expr(element):
@@ -904,9 +1150,7 @@ class ColumnElement(ClauseElement, operators.ColumnOperators):
 
 
 class BindParameter(ColumnElement):
-    """Represent a bind parameter.
-
-    Public constructor is the :func:`bindparam()` function.
+    """Represent a bound parameter value.
 
     """
 
@@ -915,58 +1159,88 @@ class BindParameter(ColumnElement):
 
     _is_crud = False
 
-    def __init__(self, key, value, type_=None, unique=False,
-                            callable_=None,
-                            isoutparam=False, required=False,
-                            quote=None,
+    def __init__(self, key, value=NO_ARG, type_=None,
+                            unique=False, required=NO_ARG,
+                            quote=None, callable_=None,
+                            isoutparam=False,
                             _compared_to_operator=None,
                             _compared_to_type=None):
-        """Construct a BindParameter.
+        """Construct a new :class:`.BindParameter`.
 
-        :param key:
-          the key for this bind param.  Will be used in the generated
-          SQL statement for dialects that use named parameters.  This
-          value may be modified when part of a compilation operation,
-          if other :class:`BindParameter` objects exist with the same
-          key, or if its length is too long and truncation is
-          required.
+            :param key:
+              the key for this bind param.  Will be used in the generated
+              SQL statement for dialects that use named parameters.  This
+              value may be modified when part of a compilation operation,
+              if other :class:`BindParameter` objects exist with the same
+              key, or if its length is too long and truncation is
+              required.
 
-        :param value:
-          Initial value for this bind param.  This value may be
-          overridden by the dictionary of parameters sent to statement
-          compilation/execution.
+            :param value:
+              Initial value for this bind param.  This value may be
+              overridden by the dictionary of parameters sent to statement
+              compilation/execution.
 
-        :param callable\_:
-          A callable function that takes the place of "value".  The function
-          will be called at statement execution time to determine the
-          ultimate value.   Used for scenarios where the actual bind
-          value cannot be determined at the point at which the clause
-          construct is created, but embedded bind values are still desirable.
+              Defaults to ``None``, however if neither ``value`` nor
+              ``callable`` are passed explicitly, the ``required`` flag will be
+              set to ``True`` which has the effect of requiring a value be present
+              when the statement is actually executed.
 
-        :param type\_:
-          A ``TypeEngine`` object that will be used to pre-process the
-          value corresponding to this :class:`BindParameter` at
-          execution time.
+              .. versionchanged:: 0.8 The ``required`` flag is set to ``True``
+                 automatically if ``value`` or ``callable`` is not passed.
 
-        :param unique:
-          if True, the key name of this BindParameter will be
-          modified if another :class:`BindParameter` of the same name
-          already has been located within the containing
-          :class:`.ClauseElement`.
+            :param callable\_:
+              A callable function that takes the place of "value".  The function
+              will be called at statement execution time to determine the
+              ultimate value.   Used for scenarios where the actual bind
+              value cannot be determined at the point at which the clause
+              construct is created, but embedded bind values are still desirable.
 
-        :param quote:
-          True if this parameter name requires quoting and is not
-          currently known as a SQLAlchemy reserved word; this currently
-          only applies to the Oracle backend.
+            :param type\_:
+              A ``TypeEngine`` object that will be used to pre-process the
+              value corresponding to this :class:`BindParameter` at
+              execution time.
 
-        :param required:
-          a value is required at execution time.
+            :param unique:
+              if True, the key name of this BindParamClause will be
+              modified if another :class:`BindParameter` of the same name
+              already has been located within the containing
+              :class:`.ClauseElement`.
 
-        :param isoutparam:
-          if True, the parameter should be treated like a stored procedure
-          "OUT" parameter.
+            :param required:
+              If ``True``, a value is required at execution time.  If not passed,
+              is set to ``True`` or ``False`` based on whether or not
+              one of ``value`` or ``callable`` were passed..
+
+              .. versionchanged:: 0.8 If the ``required`` flag is not specified,
+                 it will be set automatically to ``True`` or ``False`` depending
+                 on whether or not the ``value`` or ``callable`` parameters
+                 were specified.
+
+            :param quote:
+              True if this parameter name requires quoting and is not
+              currently known as a SQLAlchemy reserved word; this currently
+              only applies to the Oracle backend.
+
+            :param isoutparam:
+              if True, the parameter should be treated like a stored procedure
+              "OUT" parameter.
+
+              .. seealso::
+
+                :func:`.outparam`
+
+
 
         """
+        if isinstance(key, ColumnClause):
+            type_ = key.type
+            key = key.name
+        if required is NO_ARG:
+            required = (value is NO_ARG and callable_ is None)
+        if value is NO_ARG:
+            value = None
+
+
         if unique:
             self.key = _anonymous_label('%%(%d %s)s' % (id(self), key
                     or 'param'))
@@ -1098,6 +1372,101 @@ class TextClause(Executable, ClauseElement):
                     bindparams=None,
                     typemap=None,
                     autocommit=None):
+        """Construct a new :class:`.TextClause` clause.
+
+        E.g.::
+
+            fom sqlalchemy import text
+
+            t = text("SELECT * FROM users")
+            result = connection.execute(t)
+
+        The advantages :func:`.text` provides over a plain string are
+        backend-neutral support for bind parameters, per-statement
+        execution options, as well as
+        bind parameter and result-column typing behavior, allowing
+        SQLAlchemy type constructs to play a role when executing
+        a statement that is specified literally.
+
+        Bind parameters are specified by name, using the format ``:name``.
+        E.g.::
+
+            t = text("SELECT * FROM users WHERE id=:user_id")
+            result = connection.execute(t, user_id=12)
+
+        To invoke SQLAlchemy typing logic for bind parameters, the
+        ``bindparams`` list allows specification of :func:`bindparam`
+        constructs which specify the type for a given name::
+
+            t = text("SELECT id FROM users WHERE updated_at>:updated",
+                        bindparams=[bindparam('updated', DateTime())]
+                    )
+
+        Typing during result row processing is also an important concern.
+        Result column types
+        are specified using the ``typemap`` dictionary, where the keys
+        match the names of columns.  These names are taken from what
+        the DBAPI returns as ``cursor.description``::
+
+            t = text("SELECT id, name FROM users",
+                    typemap={
+                        'id':Integer,
+                        'name':Unicode
+                    }
+            )
+
+        The :func:`text` construct is used internally for most cases when
+        a literal string is specified for part of a larger query, such as
+        within :func:`select()`, :func:`update()`,
+        :func:`insert()` or :func:`delete()`.   In those cases, the same
+        bind parameter syntax is applied::
+
+            s = select([users.c.id, users.c.name]).where("id=:user_id")
+            result = connection.execute(s, user_id=12)
+
+        Using :func:`text` explicitly usually implies the construction
+        of a full, standalone statement.   As such, SQLAlchemy refers
+        to it as an :class:`.Executable` object, and it supports
+        the :meth:`Executable.execution_options` method.  For example,
+        a :func:`text` construct that should be subject to "autocommit"
+        can be set explicitly so using the ``autocommit`` option::
+
+            t = text("EXEC my_procedural_thing()").\\
+                    execution_options(autocommit=True)
+
+        Note that SQLAlchemy's usual "autocommit" behavior applies to
+        :func:`text` constructs - that is, statements which begin
+        with a phrase such as ``INSERT``, ``UPDATE``, ``DELETE``,
+        or a variety of other phrases specific to certain backends, will
+        be eligible for autocommit if no transaction is in progress.
+
+        :param text:
+          the text of the SQL statement to be created.  use ``:<param>``
+          to specify bind parameters; they will be compiled to their
+          engine-specific format.
+
+        :param autocommit:
+          Deprecated.  Use .execution_options(autocommit=<True|False>)
+          to set the autocommit option.
+
+        :param bind:
+          an optional connection or engine to be used for this text query.
+
+        :param bindparams:
+          a list of :func:`bindparam()` instances which can be used to define
+          the types and/or initial values for the bind parameters within
+          the textual statement; the keynames of the bindparams must match
+          those within the text of the statement.  The types will be used
+          for pre-processing on bind values.
+
+        :param typemap:
+          a dictionary mapping the names of columns represented in the
+          columns clause of a ``SELECT`` statement  to type objects,
+          which will be used to perform post-processing on columns within
+          the result set.   This argument applies to any expression
+          that returns result sets.
+
+        """
 
         self._bind = bind
         self.bindparams = {}
@@ -1724,6 +2093,33 @@ class Over(ColumnElement):
     partition_by = None
 
     def __init__(self, func, partition_by=None, order_by=None):
+        """Produce an :class:`.Over` object against a function.
+
+        Used against aggregate or so-called "window" functions,
+        for database backends that support window functions.
+
+        E.g.::
+
+            from sqlalchemy import over
+            over(func.row_number(), order_by='x')
+
+        Would produce "ROW_NUMBER() OVER(ORDER BY x)".
+
+        :param func: a :class:`.FunctionElement` construct, typically
+         generated by :data:`~.expression.func`.
+        :param partition_by: a column element or string, or a list
+         of such, that will be used as the PARTITION BY clause
+         of the OVER construct.
+        :param order_by: a column element or string, or a list
+         of such, that will be used as the ORDER BY clause
+         of the OVER construct.
+
+        This function is also available from the :data:`~.expression.func`
+        construct itself via the :meth:`.FunctionElement.over` method.
+
+        .. versionadded:: 0.7
+
+        """
         self.func = func
         if order_by is not None:
             self.order_by = ClauseList(*util.to_list(order_by))
@@ -1876,20 +2272,6 @@ class ColumnClause(Immutable, ColumnElement):
     not associated with any :class:`.schema.MetaData`, unlike it's
     more full fledged :class:`.schema.Table` counterpart.
 
-    :param text: the text of the element.
-
-    :param selectable: parent selectable.
-
-    :param type: :class:`.types.TypeEngine` object which can associate
-      this :class:`.ColumnClause` with a type.
-
-    :param is_literal: if True, the :class:`.ColumnClause` is assumed to
-      be an exact expression that will be delivered to the output with no
-      quoting rules applied regardless of case sensitive settings. the
-      :func:`literal_column()` function is usually used to create such a
-      :class:`.ColumnClause`.
-
-
     """
     __visit_name__ = 'column'
 
@@ -1897,9 +2279,32 @@ class ColumnClause(Immutable, ColumnElement):
 
     _memoized_property = util.group_expirable_memoized_property()
 
-    def __init__(self, text, selectable=None, type_=None, is_literal=False):
+    def __init__(self, text, type_=None, is_literal=False, _selectable=None):
+        """Construct a :class:`.ColumnClause` object.
+
+        :param text: the text of the element.
+
+        :param type: :class:`.types.TypeEngine` object which can associate
+          this :class:`.ColumnClause` with a type.
+
+        :param is_literal: if True, the :class:`.ColumnClause` is assumed to
+          be an exact expression that will be delivered to the output with no
+          quoting rules applied regardless of case sensitive settings. the
+          :func:`literal_column()` function is usually used to create such a
+          :class:`.ColumnClause`.
+
+        :param text: the name of the column.  Quoting rules will be applied
+          to the clause like any other column name. For textual column constructs
+          that are not to be quoted, use the :func:`literal_column` function.
+
+        :param type\_: an optional :class:`~sqlalchemy.types.TypeEngine` object
+          which will provide result-set translation for this column.
+
+
+        """
+
         self.key = self.name = text
-        self.table = selectable
+        self.table = _selectable
         self.type = sqltypes.to_instance(type_)
         self.is_literal = is_literal
 

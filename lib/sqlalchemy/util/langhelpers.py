@@ -107,6 +107,30 @@ def decorator(target):
     return update_wrapper(decorate, target)
 
 
+def public_factory(target):
+    """Produce a wrapping function for the given cls or classmethod.
+
+    Rationale here is so that the __init__ method of the
+    class can serve as documentation for the function.
+
+    """
+    if isinstance(target, type):
+        fn = target.__init__
+        callable_ = target
+    else:
+        fn = callable_ = target
+    spec = compat.inspect_getfullargspec(fn)
+    del spec[0][0]
+    #import pdb
+    #pdb.set_trace()
+    metadata = format_argspec_plus(spec, grouped=False)
+    code = 'lambda %(args)s: cls(%(apply_kw)s)' % metadata
+    decorated = eval(code, {'cls': callable_, 'symbol': symbol})
+    decorated.__doc__ = fn.__doc__
+    return decorated
+    #return update_wrapper(decorated, fn)
+
+
 class PluginLoader(object):
 
     def __init__(self, group, auto_fn=None):
@@ -1000,7 +1024,7 @@ class _symbol(int):
         return repr(self)
 
     def __repr__(self):
-        return "<symbol '%s>" % self.name
+        return "symbol(%r)" % self.name
 
 _symbol.__name__ = 'symbol'
 
