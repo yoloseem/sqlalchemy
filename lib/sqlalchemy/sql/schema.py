@@ -33,26 +33,15 @@ import inspect
 from .. import exc, util, event, events, inspection
 from . import visitors, types_base as sqltypes_base
 from . import selectable, elements
-from .base import SchemaItem
-from ..util import topological
+from .base import SchemaItem, _bind_or_error, ColumnCollection
 
 import collections
 import sqlalchemy
 from . import ddl
 url = util.importlater("sqlalchemy.engine", "url")
 
-__all__ = ['SchemaItem', 'Table', 'Column', 'ForeignKey', 'Sequence', 'Index',
-           'ForeignKeyConstraint', 'PrimaryKeyConstraint', 'CheckConstraint',
-           'UniqueConstraint', 'DefaultGenerator', 'Constraint', 'MetaData',
-           'ThreadLocalMetaData', 'SchemaVisitor', 'PassiveDefault',
-           'DefaultClause', 'FetchedValue', 'ColumnDefault', 'DDL',
-           'CreateTable', 'DropTable', 'CreateSequence', 'DropSequence',
-           'AddConstraint', 'DropConstraint',
-           ]
-__all__.sort()
 
 RETAIN_SCHEMA = util.symbol('retain_schema')
-
 
 
 def _get_table_key(name, schema):
@@ -303,7 +292,7 @@ class Table(SchemaItem, selectable.TableClause):
                 table.dispatch.after_parent_attach(table, metadata)
                 return table
             except:
-                metadata._remove_table(name, schema)
+                #metadata._remove_table(name, schema)
                 raise
 
     def __init__(self, *args, **kw):
@@ -330,7 +319,7 @@ class Table(SchemaItem, selectable.TableClause):
 
         self.indexes = set()
         self.constraints = set()
-        self._columns = expression.ColumnCollection()
+        self._columns = ColumnCollection()
         PrimaryKeyConstraint()._set_parent_with_dispatch(self)
         self.foreign_keys = set()
         self._extra_dependencies = set()
@@ -552,7 +541,7 @@ class Table(SchemaItem, selectable.TableClause):
     def get_children(self, column_collections=True,
                                 schema_visitor=False, **kw):
         if not schema_visitor:
-            return expression.TableClause.get_children(
+            return selectable.TableClause.get_children(
                 self, column_collections=column_collections, **kw)
         else:
             if column_collections:
@@ -1043,7 +1032,7 @@ class Column(SchemaItem, elements.ColumnClause):
                     "The 'index' keyword argument on Column is boolean only. "
                     "To create indexes with a specific name, create an "
                     "explicit Index object external to the Table.")
-            Index(expression._truncated_label('ix_%s' % self._label),
+            Index(elements._truncated_label('ix_%s' % self._label),
                                     self, unique=self.unique)
         elif self.unique:
             if isinstance(self.unique, util.string_types):
@@ -1120,7 +1109,7 @@ class Column(SchemaItem, elements.ColumnClause):
                     "been assigned.")
         try:
             c = self._constructor(
-                expression._as_truncated(name or self.name) if \
+                elements._as_truncated(name or self.name) if \
                                 name_is_truncatable else (name or self.name),
                 self.type,
                 key=key if key else name if name else self.key,
@@ -1153,7 +1142,7 @@ class Column(SchemaItem, elements.ColumnClause):
                     if x is not None] + \
                 list(self.foreign_keys) + list(self.constraints)
         else:
-            return expression.ColumnClause.get_children(self, **kwargs)
+            return elements.ColumnClause.get_children(self, **kwargs)
 
 
 class ForeignKey(SchemaItem):
@@ -1844,13 +1833,14 @@ class Sequence(DefaultGenerator):
     def is_clause_element(self):
         return False
 
-    def next_value(self):
+    @util.dependencies("sqlalchemy.sql.functions.func")
+    def next_value(self, func):
         """Return a :class:`.next_value` function element
         which will render the appropriate increment function
         for this :class:`.Sequence` within any SQL expression.
 
         """
-        return expression.func.next_value(self, bind=self.bind)
+        return func.next_value(self, bind=self.bind)
 
     def _set_parent(self, column):
         super(Sequence, self)._set_parent(column)
@@ -2072,9 +2062,26 @@ class Constraint(SchemaItem):
         raise NotImplementedError()
 
 
+def _to_schema_column(element):
+    if hasattr(element, '__clause_element__'):
+        element = element.__clause_element__()
+    if not isinstance(element, Column):
+        raise exc.ArgumentError("schema.Column object expected")
+    return element
+
+
+def _to_schema_column_or_string(element):
+    if hasattr(element, '__clause_element__'):
+        element = element.__clause_element__()
+    if not isinstance(element, util.string_types + (elements.ColumnElement, )):
+        msg = "Element %r is not a string name or column element"
+        raise exc.ArgumentError(msg % element)
+    return element
+
+
 class ColumnCollectionMixin(object):
     def __init__(self, *columns):
-        self.columns = expression.ColumnCollection()
+        self.columns = ColumnCollection()
         self._pending_colargs = [_to_schema_column_or_string(c)
                                     for c in columns]
         if self._pending_colargs and \
@@ -2964,29 +2971,6 @@ class ThreadLocalMetaData(MetaData):
                 e.dispose()
 
 
-def _bind_or_error(schemaitem, msg=None):
-    bind = schemaitem.bind
-    if not bind:
-        name = schemaitem.__class__.__name__
-        label = getattr(schemaitem, 'fullname',
-                        getattr(schemaitem, 'name', None))
-        if label:
-            item = '%s %r' % (name, label)
-        else:
-            item = name
-        if isinstance(schemaitem, (MetaData, DDL)):
-            bindable = "the %s's .bind" % name
-        else:
-            bindable = "this %s's .metadata.bind" % name
-
-        if msg is None:
-            msg = "The %s is not bound to an Engine or Connection.  "\
-                   "Execution can not proceed without a database to execute "\
-                   "against.  Either execute with an explicit connection or "\
-                   "assign %s to enable implicit execution." % \
-                   (item, bindable)
-        raise exc.UnboundExecutionError(msg)
-    return bind
 
 class SchemaType(events.SchemaEventTarget):
     """Mark a type as possibly requiring schema-level DDL for usage.

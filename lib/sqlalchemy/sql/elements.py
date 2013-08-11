@@ -612,7 +612,8 @@ class ClauseElement(Visitable):
         """
         return self
 
-    def compile(self, bind=None, dialect=None, **kw):
+    @util.dependencies("sqlalchemy.engine.default")
+    def compile(self, default, bind=None, dialect=None, **kw):
         """Compile this SQL expression.
 
         The return value is a :class:`~.Compiled` object.

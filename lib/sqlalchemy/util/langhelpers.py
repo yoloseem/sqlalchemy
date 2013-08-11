@@ -708,9 +708,10 @@ class importlater(object):
         importlater._unresolved.add(self)
 
     @classmethod
-    def resolve_all(cls):
+    def resolve_all(cls, path):
         for m in list(importlater._unresolved):
-            m._resolve()
+            if m._il_path.startswith(path):
+                m._resolve()
 
     @property
     def _full_path(self):
@@ -745,6 +746,58 @@ class importlater(object):
                     )
         self.__dict__[key] = attr
         return attr
+
+def dependencies(*deps):
+    """Apply imported dependencies as arguments to a function.
+
+    E.g.::
+
+        @util.dependencies(
+            "sqlalchemy.sql.widget",
+            "sqlalchemy.engine.default"
+        );
+        def some_func(self, widget, default, arg1, arg2, **kw):
+            # ...
+
+    Rationale is so that the impact of a dependency cycle can be
+    associated directly with the few functions that cause the cycle,
+    and not pollute the module-level namespace.
+
+    """
+    import_deps = {}
+    for dep in deps:
+        tokens = dep.split(".")
+        import_deps[tokens[-1]] = importlater(
+                ".".join(tokens[0:-1]),
+                tokens[-1]
+            )
+
+    def decorate(fn):
+        spec = compat.inspect_getfullargspec(fn)
+
+        spec_zero = list(spec[0])
+        for i, name in enumerate(spec_zero):
+            if name in import_deps:
+                spec[0][i] = "import_deps[%r]" % name
+
+        inner_spec = format_argspec_plus(spec, grouped=False)
+
+        for name in list(spec_zero):
+            if name in import_deps:
+                spec_zero.remove(name)
+        spec[0][:] = spec_zero
+
+        outer_spec = format_argspec_plus(spec, grouped=False)
+
+        code = 'lambda %(args)s: fn(%(apply_kw)s)' % {
+                    "args": outer_spec['args'],
+                    "apply_kw": inner_spec['apply_kw']
+        }
+        decorated = eval(code, locals())
+        decorated.__defaults__ = getattr(fn, 'im_func', fn).__defaults__
+        return update_wrapper(decorated, fn)
+    return decorate
+
 
 # from paste.deploy.converters
 def asbool(obj):

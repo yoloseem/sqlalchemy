@@ -30,7 +30,7 @@ from __future__ import unicode_literals
 
 from . import operators
 from .visitors import Visitable
-from .functions import func, modifier
+from .functions import func, modifier, FunctionElement
 from . import types as sqltypes
 
 from . import util as sqlutil
@@ -39,12 +39,12 @@ from .elements import ClauseElement, ColumnElement,\
   Label, Cast, Case, ColumnClause, TextClause, Over, Null, \
   True_, False_, BinaryExpression, Tuple, TypeClause, Extract, \
   Grouping, ScalarSelect, and_, or_, not_, null, false, true, \
-  collate
+  collate, asc, desc, cast, extract, literal_column
 
 from .base import ColumnCollection, Generative, Executable, NO_ARG
 
 from .selectable import Alias, Join, Select, Selectable, TableClause, \
-        CompoundSelect, FromClause, FromGrouping, SelectBase
+        CompoundSelect, FromClause, FromGrouping, SelectBase, select
 from .dml import Insert, Update, Delete
 
 

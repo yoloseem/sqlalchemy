@@ -9,8 +9,8 @@ and :class:`.RowProxy."""
 
 
 
-from .. import exc, types, util
-from ..sql import expression
+from .. import exc, util
+from ..sql import expression, types
 import collections
 
 # This reconstructor is necessary so that pickles with the C extension or

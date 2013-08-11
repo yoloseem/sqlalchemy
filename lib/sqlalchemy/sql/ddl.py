@@ -1,14 +1,20 @@
-# engine/ddl.py
+# schema/ddl.py
 # Copyright (C) 2009-2013 the SQLAlchemy authors and contributors <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
+"""
+Provides the hierarchy of DDL-defining schema items as well as routines
+to invoke them for a create/drop call.
 
-"""Routines to handle CREATE/DROP workflow."""
+"""
 
 from .. import util
 from . import elements
-from .base import Executable, _generative, SchemaVisitor
+from .base import Executable, _generative, SchemaVisitor, _bind_or_error
+from ..util import topological
+from .. import event
+from .. import exc
 
 class _DDLCompiles(elements.ClauseElement):
     def _compiler(self, dialect, **kw):
@@ -380,22 +386,6 @@ class DDL(DDLElement):
                        for key in ('on', 'context')
                        if getattr(self, key)]))
 
-
-def _to_schema_column(element):
-    if hasattr(element, '__clause_element__'):
-        element = element.__clause_element__()
-    if not isinstance(element, Column):
-        raise exc.ArgumentError("schema.Column object expected")
-    return element
-
-
-def _to_schema_column_or_string(element):
-    if hasattr(element, '__clause_element__'):
-        element = element.__clause_element__()
-    if not isinstance(element, util.string_types + (expression.ColumnElement, )):
-        msg = "Element %r is not a string name or column element"
-        raise exc.ArgumentError(msg % element)
-    return element
 
 
 class _CreateDropBase(DDLElement):

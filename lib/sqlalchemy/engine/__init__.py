@@ -54,11 +54,9 @@ url.py
 #import sqlalchemy.databases
 
 from .interfaces import (
-    Compiled,
     Connectable,
     Dialect,
     ExecutionContext,
-    TypeCompiler
 )
 
 from .base import (
@@ -83,7 +81,12 @@ from .util import (
     connection_memoize
     )
 
-from . import util, strategies, ddl
+from ..sql.base import (
+    Compiled,
+    TypeCompiler
+    )
+
+from . import util, strategies
 
 default_strategy = 'plain'
 

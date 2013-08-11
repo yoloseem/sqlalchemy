@@ -113,17 +113,17 @@ if False:
         UniqueConstraint,
         )
 
-    from .inspection import inspect
+from .inspection import inspect
 
-    from .engine import create_engine, engine_from_config
+from .engine import create_engine, engine_from_config
 
 
-    __all__ = sorted(name for name, obj in locals().items()
-                     if not (name.startswith('_') or _inspect.ismodule(obj)))
+__all__ = sorted(name for name, obj in locals().items()
+                 if not (name.startswith('_') or _inspect.ismodule(obj)))
 
-    __version__ = '0.9.0'
+__version__ = '0.9.0'
 
-    del _inspect, sys
+del _inspect, sys
 
 from . import util as _sa_util
-_sa_util.importlater.resolve_all()
+_sa_util.importlater.resolve_all("sqlalchemy")

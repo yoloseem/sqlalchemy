@@ -1,5 +1,6 @@
 from .elements import ClauseElement, TextClause, _clone, ClauseList
-from .base import Immutable, Executable, _generative, HasPrefixes
+from .base import Immutable, Executable, _generative, HasPrefixes, \
+            ColumnCollection, ColumnSet
 from .. import inspection
 from .. import util
 from .. import exc
@@ -197,7 +198,8 @@ class FromClause(Selectable):
     schema = None
     _memoized_property = util.group_expirable_memoized_property(["_columns"])
 
-    def count(self, whereclause=None, **params):
+    @util.dependencies("sqlalchemy.sql.functions.func")
+    def count(self, func, whereclause=None, **params):
         """return a SELECT COUNT generated against this
         :class:`.FromClause`."""
 
@@ -271,13 +273,14 @@ class FromClause(Selectable):
         """
         return self._cloned_set.intersection(other._cloned_set)
 
-    def replace_selectable(self, old, alias):
+    @util.dependencies("sqlalchemy.sql.adapters")
+    def replace_selectable(self, adapters, old, alias):
         """replace all occurrences of FromClause 'old' with the given Alias
         object, returning a copy of this :class:`.FromClause`.
 
         """
 
-        return sqlutil.ClauseAdapter(alias).traverse(self)
+        return adapters.ClauseAdapter(alias).traverse(self)
 
     def correspond_on_equivalents(self, column, equivalents):
         """Return corresponding_column for the given column, or if None

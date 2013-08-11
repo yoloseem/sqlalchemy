@@ -477,3 +477,22 @@ class TypeCompiler(object):
 
     def process(self, type_):
         return type_._compiler_dispatch(self)
+
+
+
+def _bind_or_error(schemaitem, msg=None):
+    bind = schemaitem.bind
+    if not bind:
+        name = schemaitem.__class__.__name__
+        label = getattr(schemaitem, 'fullname',
+                        getattr(schemaitem, 'name', None))
+        if label:
+            item = '%s %r' % (name, label)
+        else:
+            item = name
+        if msg is None:
+            msg = "The %s is not bound to an Engine or Connection.  "\
+                   "Execution can not proceed without a database to execute "\
+                   "against." % item
+        raise exc.UnboundExecutionError(msg)
+    return bind
