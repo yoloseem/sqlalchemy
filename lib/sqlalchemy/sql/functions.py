@@ -4,11 +4,12 @@
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
-from .. import types as sqltypes, schema
-from .expression import (
-    ClauseList, Function, _literal_as_binds, literal_column, _type_from_args,
-    cast, extract
-    )
+from . import types as sqltypes, schema
+from .base import Executable
+from .elements import ClauseList, cast, extract, _literal_as_binds, \
+        literal_column, _type_from_args, ColumnElement, _clone
+from .selectable import FromClause
+
 from . import operators
 from .visitors import VisitableType
 from .. import util

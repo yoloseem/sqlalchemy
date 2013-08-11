@@ -1,7 +1,9 @@
-from .elements import ClauseElement, TextClause
+from .elements import ClauseElement, TextClause, _clone, ClauseList
+from .base import Immutable, Executable, _generative, HasPrefixes
 from .. import inspection
 from .. import util
 from .. import exc
+from operator import attrgetter
 
 def _interpret_as_from(element):
     insp = inspection.inspect(element, raiseerr=False)

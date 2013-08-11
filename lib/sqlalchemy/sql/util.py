@@ -4,8 +4,8 @@
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
-from .. import exc, schema, util, sql
-from . import elements, selectable, base
+from .. import exc, util, sql
+from . import elements
 from ..util import topological
 from . import operators, visitors
 from itertools import chain

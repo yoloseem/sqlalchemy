@@ -23,11 +23,10 @@ To generate user-defined SQL strings, see
 """
 
 import re
-import sys
-from .. import schema, engine, util, exc, types
-from . import (
-    operators, functions, util as sql_util, visitors, expression as sql
-)
+from . import schema, types, operators, functions, \
+        util as sql_util, visitors, expression as sql
+from .. import util, exc
+from .base import Compiled, TypeCompiler
 import decimal
 import itertools
 
@@ -183,7 +182,7 @@ class _CompileLabel(visitors.Visitable):
         return self.element.quote
 
 
-class SQLCompiler(engine.Compiled):
+class SQLCompiler(Compiled):
     """Default implementation of Compiled.
 
     Compiles ClauseElements into SQL strings.   Uses a similar visit
@@ -284,7 +283,7 @@ class SQLCompiler(engine.Compiled):
         # a map which tracks "truncated" names based on
         # dialect.label_length or dialect.max_identifier_length
         self.truncated_names = {}
-        engine.Compiled.__init__(self, dialect, statement, **kwargs)
+        Compiled.__init__(self, dialect, statement, **kwargs)
 
         if self.positional and dialect.paramstyle == 'numeric':
             self._apply_numbered_params()
@@ -2013,7 +2012,7 @@ class SQLCompiler(engine.Compiled):
                 self.preparer.format_savepoint(savepoint_stmt)
 
 
-class DDLCompiler(engine.Compiled):
+class DDLCompiler(Compiled):
 
     @util.memoized_property
     def sql_compiler(self):
@@ -2343,7 +2342,7 @@ class DDLCompiler(engine.Compiled):
         return text
 
 
-class GenericTypeCompiler(engine.TypeCompiler):
+class GenericTypeCompiler(TypeCompiler):
 
     def visit_FLOAT(self, type_):
         return "FLOAT"

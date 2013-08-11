@@ -31,7 +31,7 @@ from __future__ import unicode_literals
 from . import operators
 from .visitors import Visitable
 from .functions import func, modifier
-from .. import types as sqltypes
+from . import types as sqltypes
 
 from . import util as sqlutil
 from .elements import ClauseElement, ColumnElement,\
@@ -399,27 +399,7 @@ def case(whens, value=None, else_=None):
     return Case(whens, value=value, else_=else_)
 
 
-def cast(clause, totype, **kwargs):
-    """Return a ``CAST`` function.
 
-    Equivalent of SQL ``CAST(clause AS totype)``.
-
-    Use with a :class:`~sqlalchemy.types.TypeEngine` subclass, i.e::
-
-      cast(table.c.unit_price * table.c.qty, Numeric(10,4))
-
-    or::
-
-      cast(table.c.timestamp, DATE)
-
-    """
-    return Cast(clause, totype, **kwargs)
-
-
-def extract(field, expr):
-    """Return the clause ``extract(field FROM expr)``."""
-
-    return Extract(field, expr)
 
 
 def exists(*args, **kwargs):
@@ -738,28 +718,6 @@ def column(text, type_=None):
     return ColumnClause(text, type_=type_)
 
 
-def literal_column(text, type_=None):
-    """Return a textual column expression, as would be in the columns
-    clause of a ``SELECT`` statement.
-
-    The object returned supports further expressions in the same way as any
-    other column object, including comparison, math and string operations.
-    The type\_ parameter is important to determine proper expression behavior
-    (such as, '+' means string concatenation or numerical addition based on
-    the type).
-
-    :param text: the text of the expression; can be any SQL expression.
-      Quoting rules will not be applied. To specify a column-name expression
-      which should be subject to quoting rules, use the :func:`column`
-      function.
-
-    :param type\_: an optional :class:`~sqlalchemy.types.TypeEngine`
-      object which will
-      provide result-set translation and additional expression semantics for
-      this column. If left as None the type will be NullType.
-
-    """
-    return ColumnClause(text, type_=type_, is_literal=True)
 
 
 def table(name, *columns):

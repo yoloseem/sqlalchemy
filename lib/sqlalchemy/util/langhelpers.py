@@ -619,7 +619,11 @@ class memoized_property(object):
         return result
 
     def _reset(self, obj):
-        obj.__dict__.pop(self.__name__, None)
+        memoized_property.reset(obj, self.__name__)
+
+    @classmethod
+    def reset(cls, obj, name):
+        obj.__dict__.pop(name, None)
 
 
 class memoized_instancemethod(object):
