@@ -67,3 +67,12 @@ if False:
 
 __tmp = list(locals().keys())
 __all__ = sorted([i for i in __tmp if not i.startswith('__')])
+
+
+from . import schema, expression
+
+from .annotation import _prepare_annotations
+from .elements import ColumnElement, AnnotatedColumnElement
+from .selectable import FromClause, AnnotatedFromClause
+_prepare_annotations(ColumnElement, AnnotatedColumnElement)
+_prepare_annotations(FromClause, AnnotatedFromClause)

@@ -2,6 +2,7 @@ from .. import util, exc, inspection
 from . import types_base as sqltypes
 from . import operators
 from .visitors import Visitable
+from .annotation import Annotated
 import itertools
 from .base import Executable, PARSE_AUTOCOMMIT, Immutable, Generative, _generative
 import re
@@ -2302,3 +2303,32 @@ class RollbackToSavepointClause(_IdentifiedClause):
 
 class ReleaseSavepointClause(_IdentifiedClause):
     __visit_name__ = 'release_savepoint'
+
+
+class AnnotatedColumnElement(Annotated):
+    def __init__(self, element, values):
+        ColumnElement.comparator._reset(self)
+        Annotated.__init__(self, element, values)
+        for attr in ('name', 'key'):
+            if self.__dict__.get(attr, False) is None:
+                self.__dict__.pop(attr)
+
+    def _with_annotations(self, values):
+        clone = super(AnnotatedColumnElement, self)._with_annotations(values)
+        ColumnElement.comparator._reset(clone)
+        return clone
+
+    @util.memoized_property
+    def name(self):
+        """pull 'name' from parent, if not present"""
+        return self._Annotated__element.name
+
+    @util.memoized_property
+    def key(self):
+        """pull 'key' from parent, if not present"""
+        return self._Annotated__element.key
+
+    @util.memoized_property
+    def info(self):
+        return self._Annotated__element.info
+

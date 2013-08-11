@@ -4,7 +4,7 @@
 # This module is part of SQLAlchemy and is released under
 # the MIT License: http://www.opensource.org/licenses/mit-license.php
 
-from .. import exc, util, sql
+from .. import exc, util
 from . import elements
 from ..util import topological
 from . import operators, visitors
@@ -424,7 +424,7 @@ def join_condition(a, b, ignore_nonexistent_tables=False,
     elif len(crit) == 1:
         return (crit[0])
     else:
-        return sql.and_(*crit)
+        return and_(*crit)
 
 
 

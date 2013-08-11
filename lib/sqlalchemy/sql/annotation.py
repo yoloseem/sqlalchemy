@@ -1,6 +1,5 @@
 from .. import util
-from . import elements, selectable, operators
-from .. import schema
+from . import operators
 
 class Annotated(object):
     """clones a ClauseElement and applies an 'annotations' dictionary.
@@ -26,19 +25,11 @@ class Annotated(object):
             try:
                 cls = annotated_classes[element.__class__]
             except KeyError:
-                cls = annotated_classes[element.__class__] = type.__new__(type,
-                        "Annotated%s" % element.__class__.__name__,
-                        (cls, element.__class__), {})
+                cls = _new_annotation_type(cls, element.__class__)
             return object.__new__(cls)
 
     def __init__(self, element, values):
-        # force FromClause to generate their internal
-        # collections into __dict__
-        if isinstance(element, selectable.FromClause):
-            element.c
-
         self.__dict__ = element.__dict__.copy()
-        elements.ColumnElement.comparator._reset(self)
         self.__element = element
         self._annotations = values
 
@@ -50,7 +41,6 @@ class Annotated(object):
     def _with_annotations(self, values):
         clone = self.__class__.__new__(self.__class__)
         clone.__dict__ = self.__dict__.copy()
-        elements.ColumnElement.comparator._reset(clone)
         clone._annotations = values
         return clone
 
@@ -91,43 +81,12 @@ class Annotated(object):
             return hash(other) == hash(self)
 
 
-class AnnotatedColumnElement(Annotated):
-    def __init__(self, element, values):
-        Annotated.__init__(self, element, values)
-        for attr in ('name', 'key'):
-            if self.__dict__.get(attr, False) is None:
-                self.__dict__.pop(attr)
-
-    @util.memoized_property
-    def name(self):
-        """pull 'name' from parent, if not present"""
-        return self._Annotated__element.name
-
-    @util.memoized_property
-    def key(self):
-        """pull 'key' from parent, if not present"""
-        return self._Annotated__element.key
-
-    @util.memoized_property
-    def info(self):
-        return self._Annotated__element.info
 
 # hard-generate Annotated subclasses.  this technique
 # is used instead of on-the-fly types (i.e. type.__new__())
 # so that the resulting objects are pickleable.
 annotated_classes = {}
 
-for cls in list(elements.__dict__.values()) + \
-            list(selectable.__dict__.values()) + \
-            [schema.Column, schema.Table]:
-    if isinstance(cls, type) and issubclass(cls, elements.ClauseElement):
-        if issubclass(cls, elements.ColumnElement):
-            annotation_cls = "AnnotatedColumnElement"
-        else:
-            annotation_cls = "Annotated"
-        exec("class Annotated%s(%s, cls):\n" \
-             "    pass" % (cls.__name__, annotation_cls), locals())
-        exec("annotated_classes[cls] = Annotated%s" % (cls.__name__,))
 
 
 def _deep_annotate(element, annotations, exclude=None):
@@ -191,3 +150,18 @@ def _shallow_annotate(element, annotations):
     element = element._annotate(annotations)
     element._copy_internals()
     return element
+
+def _new_annotation_type(cls, base_cls):
+    annotated_classes[cls] = anno_cls = type(
+                                    "Annotated%s" % cls.__name__,
+                                    (base_cls, cls), {})
+    globals()["Annotated%s" % cls.__name__] = anno_cls
+    return anno_cls
+
+def _prepare_annotations(target_hierarchy, base_cls):
+    stack = [target_hierarchy]
+    while stack:
+        cls = stack.pop()
+        stack.extend(cls.__subclasses__())
+
+        _new_annotation_type(cls, base_cls)

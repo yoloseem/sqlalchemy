@@ -69,7 +69,6 @@ def _validate_dialect_kwargs(kwargs, name):
             raise TypeError("Additional arguments should be "
                     "named <dialectname>_<argument>, got '%s'" % k)
 
-
 inspection._self_inspects(SchemaItem)
 
 

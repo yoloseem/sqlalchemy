@@ -4,6 +4,7 @@ from .. import inspection
 from .. import util
 from .. import exc
 from operator import attrgetter
+from .annotation import Annotated
 
 def _interpret_as_from(element):
     insp = inspection.inspect(element, raiseerr=False)
@@ -2283,3 +2284,12 @@ class Select(HasPrefixes, SelectBase):
     def _set_bind(self, bind):
         self._bind = bind
     bind = property(bind, _set_bind)
+
+
+class AnnotatedFromClause(Annotated):
+    def __init__(self, element, values):
+        # force FromClause to generate their internal
+        # collections into __dict__
+        element.c
+        Annotated.__init__(self, element, values)
+
