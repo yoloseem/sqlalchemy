@@ -14,16 +14,17 @@ from . import operators, visitors
 from itertools import chain
 from collections import deque
 
-from .annotation import _shallow_annotate, _deep_annotate, _deep_deannotate
-from .elements import _find_columns, BindParameter, ColumnClause, ColumnElement, \
+from .elements import BindParameter, ColumnClause, ColumnElement, \
             Null, UnaryExpression, literal_column, Label
 from .selectable import ScalarSelect, Join, FromClause, FromGrouping
 from .schema import Column
-from .ddl import sort_tables
-
 
 join_condition = util.langhelpers.public_factory(Join._join_condition)
 
+# names that are still being imported from the outside
+from .annotation import _shallow_annotate, _deep_annotate, _deep_deannotate
+from .elements import _find_columns
+from .ddl import sort_tables
 
 
 def find_join_source(clauses, join_to):
