@@ -37,7 +37,7 @@ from . import type_api
 from .base import _bind_or_error, ColumnCollection
 from .elements import ClauseElement, ColumnClause, _truncated_label, \
                         _as_truncated, TextClause, _literal_as_text,\
-                        ColumnElement, find_columns
+                        ColumnElement, _find_columns
 from .selectable import TableClause
 import collections
 import sqlalchemy
@@ -62,7 +62,7 @@ def _validate_dialect_kwargs(kwargs, name):
             raise TypeError("Additional arguments should be "
                     "named <dialectname>_<argument>, got '%s'" % k)
 
-
+@inspection._self_inspects
 class SchemaItem(SchemaEventTarget, visitors.Visitable):
     """Base class for items that define a database schema."""
 
@@ -95,7 +95,7 @@ class SchemaItem(SchemaEventTarget, visitors.Visitable):
         """
         return {}
 
-inspection._self_inspects(SchemaItem)
+
 
 class Table(SchemaItem, TableClause):
     """Represent a table in a database.
@@ -2212,7 +2212,7 @@ class CheckConstraint(Constraint):
         if table is not None:
             self._set_parent_with_dispatch(table)
         elif _autoattach:
-            cols = find_columns(self.sqltext)
+            cols = _find_columns(self.sqltext)
             tables = set([c.table for c in cols
                         if isinstance(c.table, Table)])
             if len(tables) == 1:

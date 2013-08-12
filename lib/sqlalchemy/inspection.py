@@ -89,3 +89,5 @@ def _inspects(*types):
 
 def _self_inspects(*types):
     _inspects(*types)(True)
+    if len(types) == 1:
+        return types[0]

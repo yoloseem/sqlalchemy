@@ -9,11 +9,12 @@ SQL tables and derived rowsets.
 
 """
 
-from .elements import ClauseElement, TextClause, _clone, ClauseList, \
+from .elements import ClauseElement, TextClause, ClauseList, \
+        and_, Grouping, UnaryExpression, literal_column
+from .elements import _clone, \
         _literal_as_text, _interpret_as_column_or_from, _expand_cloned,\
-        _select_iterables, and_, _anonymous_label, _clause_element_as_expr,\
-        Grouping, UnaryExpression, _cloned_intersection, _cloned_difference,\
-        literal_column
+        _select_iterables, _anonymous_label, _clause_element_as_expr,\
+        _cloned_intersection, _cloned_difference
 from .base import Immutable, Executable, _generative, \
             ColumnCollection, ColumnSet, _from_objects, Generative
 from . import type_api

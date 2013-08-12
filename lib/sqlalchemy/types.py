@@ -8,7 +8,17 @@
 
 """
 
+__all__ = ['TypeEngine', 'TypeDecorator', 'AbstractType', 'UserDefinedType',
+            'INT', 'CHAR', 'VARCHAR', 'NCHAR', 'NVARCHAR', 'TEXT', 'Text',
+            'FLOAT', 'NUMERIC', 'REAL', 'DECIMAL', 'TIMESTAMP', 'DATETIME',
+            'CLOB', 'BLOB', 'BINARY', 'VARBINARY', 'BOOLEAN', 'BIGINT',
+            'SMALLINT', 'INTEGER', 'DATE', 'TIME', 'String', 'Integer',
+            'SmallInteger', 'BigInteger', 'Numeric', 'Float', 'DateTime',
+            'Date', 'Time', 'LargeBinary', 'Binary', 'Boolean', 'Unicode',
+            'Concatenable', 'UnicodeText', 'PickleType', 'Interval', 'Enum']
+
 from .sql.type_api import (
+    adapt_type,
     TypeEngine,
     TypeDecorator,
     Variant,
@@ -22,7 +32,7 @@ from .sql.sqltypes import (
     BOOLEAN,
     BigInteger,
     Binary,
-    Binary as _Binary,
+    _Binary,
     Boolean,
     CHAR,
     CLOB,
@@ -61,5 +71,6 @@ from .sql.sqltypes import (
     UnicodeText,
     VARBINARY,
     VARCHAR,
+    _type_map
     )
 

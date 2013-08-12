@@ -15,9 +15,10 @@ from itertools import chain
 from collections import deque
 
 from .annotation import _shallow_annotate, _deep_annotate, _deep_deannotate
-from .elements import find_columns, BindParameter, ColumnClause, ColumnElement, \
+from .elements import _find_columns, BindParameter, ColumnClause, ColumnElement, \
             Null, UnaryExpression, literal_column, Label
 from .selectable import ScalarSelect, Join, FromClause, FromGrouping
+from .schema import Column
 from .ddl import sort_tables
 
 
@@ -432,8 +433,8 @@ def criterion_as_pairs(expression, consider_as_foreign_keys=None,
                         binary.left not in consider_as_referenced_keys):
                 pairs.append((binary.right, binary.left))
         else:
-            if isinstance(binary.left, schema.Column) and \
-                        isinstance(binary.right, schema.Column):
+            if isinstance(binary.left, Column) and \
+                        isinstance(binary.right, Column):
                 if binary.left.references(binary.right):
                     pairs.append((binary.right, binary.left))
                 elif binary.right.references(binary.left):

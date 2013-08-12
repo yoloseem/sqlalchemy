@@ -10,13 +10,14 @@ to invoke them for a create/drop call.
 """
 
 from .. import util
-from . import elements, visitors
+from .elements import ClauseElement
+from .visitors import traverse
 from .base import Executable, _generative, SchemaVisitor, _bind_or_error
 from ..util import topological
 from .. import event
 from .. import exc
 
-class _DDLCompiles(elements.ClauseElement):
+class _DDLCompiles(ClauseElement):
     def _compiler(self, dialect, **kw):
         """Return a compiler appropriate for this ClauseElement, given a
         Dialect."""
@@ -813,7 +814,7 @@ def sort_tables(tables, skip_fn=None, extra_dependencies=None):
                 tuples.append((parent_table, child_table))
 
     for table in tables:
-        visitors.traverse(table,
+        traverse(table,
                             {'schema_visitor': True},
                             {'foreign_key': visit_foreign_key})
 

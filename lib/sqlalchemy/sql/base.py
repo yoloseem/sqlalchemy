@@ -11,7 +11,7 @@
 
 from .. import util, exc
 import itertools
-from . import visitors
+from .visitors import ClauseVisitor
 
 
 PARSE_AUTOCOMMIT = util.symbol('PARSE_AUTOCOMMIT')
@@ -152,7 +152,7 @@ class Executable(Generative):
             return None
 
 
-class SchemaVisitor(visitors.ClauseVisitor):
+class SchemaVisitor(ClauseVisitor):
     """Define the visiting for ``SchemaItem`` objects."""
 
     __traverse_options__ = {'schema_visitor': True}
@@ -318,11 +318,11 @@ def _bind_or_error(schemaitem, msg=None):
         label = getattr(schemaitem, 'fullname',
                         getattr(schemaitem, 'name', None))
         if label:
-            item = '%s %r' % (name, label)
+            item = '%s object %r' % (name, label)
         else:
-            item = name
+            item = '%s object' % name
         if msg is None:
-            msg = "The %s is not bound to an Engine or Connection.  "\
+            msg = "%s is not bound to an Engine or Connection.  "\
                    "Execution can not proceed without a database to execute "\
                    "against." % item
         raise exc.UnboundExecutionError(msg)

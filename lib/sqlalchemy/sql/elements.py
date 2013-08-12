@@ -3,12 +3,10 @@ from __future__ import unicode_literals
 from .. import util, exc, inspection
 from . import type_api
 from . import operators
-from .visitors import Visitable, cloned_traverse
-from . import visitors
+from .visitors import Visitable, cloned_traverse, traverse
 from .annotation import Annotated
 import itertools
-from .base import Executable, PARSE_AUTOCOMMIT, Immutable, \
-        Generative, _generative, NO_ARG
+from .base import Executable, PARSE_AUTOCOMMIT, Immutable, NO_ARG
 import re
 import operator
 
@@ -112,17 +110,17 @@ def _labeled(element):
         return element
 
 
-def is_column(col):
+def _is_column(col):
     """True if ``col`` is an instance of :class:`.ColumnElement`."""
 
     return isinstance(col, ColumnElement)
 
 
-def find_columns(clause):
+def _find_columns(clause):
     """locate Column objects within the given expression."""
 
     cols = util.column_set()
-    visitors.traverse(clause, {}, {'column': cols.add})
+    traverse(clause, {}, {'column': cols.add})
     return cols
 
 
@@ -2384,8 +2382,8 @@ class ReleaseSavepointClause(_IdentifiedClause):
 
 class AnnotatedColumnElement(Annotated):
     def __init__(self, element, values):
-        ColumnElement.comparator._reset(self)
         Annotated.__init__(self, element, values)
+        ColumnElement.comparator._reset(self)
         for attr in ('name', 'key'):
             if self.__dict__.get(attr, False) is None:
                 self.__dict__.pop(attr)

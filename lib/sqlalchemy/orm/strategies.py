@@ -1201,7 +1201,7 @@ class JoinedLoader(AbstractRelationshipLoader):
             # by the Query propagates those columns outward.
             # This has the effect
             # of "undefering" those columns.
-            for col in sql_util.find_columns(
+            for col in sql_util._find_columns(
                                 self.parent_property.primaryjoin):
                 if localparent.mapped_table.c.contains_column(col):
                     if adapter:

@@ -14,8 +14,6 @@ from .selectable import _interpret_as_from, _interpret_as_select, HasPrefixes
 from .. import util
 from .. import exc
 
-
-
 class UpdateBase(HasPrefixes, Executable, ClauseElement):
     """Form the base for ``INSERT``, ``UPDATE``, and ``DELETE`` statements.
 
