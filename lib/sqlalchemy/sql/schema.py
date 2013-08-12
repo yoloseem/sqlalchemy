@@ -1919,6 +1919,7 @@ class Sequence(DefaultGenerator):
                 % self.__class__.__name__)
 
 
+@inspection._self_inspects
 class FetchedValue(_NotAColumnExpr, SchemaEventTarget):
     """A marker for a transparent database-side default.
 
@@ -1967,8 +1968,6 @@ class FetchedValue(_NotAColumnExpr, SchemaEventTarget):
 
     def __repr__(self):
         return util.generic_repr(self)
-
-inspection._self_inspects(FetchedValue)
 
 
 class DefaultClause(FetchedValue):

@@ -561,6 +561,7 @@ def not_(clause):
 
 
 
+@inspection._self_inspects
 class ClauseElement(Visitable):
     """Base class for elements of a programmatically constructed SQL
     expression.
@@ -858,9 +859,6 @@ class ClauseElement(Visitable):
         else:
             return '<%s.%s at 0x%x; %s>' % (
                 self.__module__, self.__class__.__name__, id(self), friendly)
-
-inspection._self_inspects(ClauseElement)
-
 
 
 

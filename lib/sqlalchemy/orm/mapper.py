@@ -56,6 +56,8 @@ NO_ATTRIBUTE = util.symbol('NO_ATTRIBUTE')
 _CONFIGURE_MUTEX = util.threading.RLock()
 
 
+@inspection._self_inspects
+@log.class_logger
 class Mapper(_InspectionAttr):
     """Define the correlation of class attributes to database table
     columns.
@@ -2106,8 +2108,6 @@ class Mapper(_InspectionAttr):
 
         return result
 
-inspection._self_inspects(Mapper)
-log.class_logger(Mapper)
 
 
 def configure_mappers():

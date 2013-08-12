@@ -87,7 +87,6 @@ def _inspects(*types):
     return decorate
 
 
-def _self_inspects(*types):
-    _inspects(*types)(True)
-    if len(types) == 1:
-        return types[0]
+def _self_inspects(cls):
+    _inspects(cls)(True)
+    return cls
