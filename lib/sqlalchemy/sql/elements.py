@@ -1657,7 +1657,7 @@ class Cast(ColumnElement):
           cast(table.c.timestamp, DATE)
 
         :class:`.Cast` is available using :func:`.cast` or alternatively
-        ``func.cast`` from the :attr:`.func` namespace.
+        ``func.cast`` from the :data:`.func` namespace.
 
         """
         self.type = type_api.to_instance(totype)
@@ -1686,7 +1686,7 @@ class Extract(ColumnElement):
 
         This is typically available as :func:`.extract`
         as well as ``func.extract`` from the
-        :attr:`.func` namespace.
+        :data:`.func` namespace.
 
         """
         self.type = type_api.INTEGERTYPE

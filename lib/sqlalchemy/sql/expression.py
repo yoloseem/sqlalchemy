@@ -49,16 +49,10 @@ from .selectable import Alias, Join, Select, Selectable, TableClause, \
 
 from .dml import Insert, Update, Delete
 
-# internal functions still being called from tests and the ORM,
-# these might be better off in some other namespace
-from .base import _from_objects
-from .elements import _literal_as_text, _clause_element_as_expr,\
-  _is_column, _labeled, _only_column_elements, _string_or_unprintable, \
-    _truncated_label, _clone, _cloned_difference, _cloned_intersection,\
-    _column_as_key, _literal_as_binds, _select_iterables, \
-    _corresponding_column_or_error
-from .selectable import _interpret_as_from
-
+# factory functions - these pull class-bound constructors and classmethods
+# from SQL elements and selectables into public functions.  This allows
+# the functions to be available in the sqlalchemy.sql.* namespace and
+# to be auto-cross-documenting from the function to the class itself.
 
 bindparam = public_factory(BindParameter)
 select = public_factory(Select)
@@ -70,32 +64,39 @@ label = public_factory(Label)
 case = public_factory(Case)
 cast = public_factory(Cast)
 extract = public_factory(Extract)
-
 except_ = public_factory(CompoundSelect._create_except)
 except_all = public_factory(CompoundSelect._create_except_all)
 intersect = public_factory(CompoundSelect._create_intersect)
 intersect_all = public_factory(CompoundSelect._create_intersect_all)
 union = public_factory(CompoundSelect._create_union)
 union_all = public_factory(CompoundSelect._create_union_all)
-
-
 exists = public_factory(Exists)
 nullsfirst = public_factory(UnaryExpression._create_nullsfirst)
 nullslast = public_factory(UnaryExpression._create_nullslast)
 asc = public_factory(UnaryExpression._create_asc)
 desc = public_factory(UnaryExpression._create_desc)
 distinct = public_factory(UnaryExpression._create_distinct)
-
 true = public_factory(True_)
 false = public_factory(False_)
 null = public_factory(Null)
-
 join = public_factory(Join._create_join)
 outerjoin = public_factory(Join._create_outerjoin)
-
 insert = public_factory(Insert)
 update = public_factory(Update)
 delete = public_factory(Delete)
+
+
+
+# internal functions still being called from tests and the ORM,
+# these might be better off in some other namespace
+from .base import _from_objects
+from .elements import _literal_as_text, _clause_element_as_expr,\
+  _is_column, _labeled, _only_column_elements, _string_or_unprintable, \
+    _truncated_label, _clone, _cloned_difference, _cloned_intersection,\
+    _column_as_key, _literal_as_binds, _select_iterables, \
+    _corresponding_column_or_error
+from .selectable import _interpret_as_from
+
 
 
 
