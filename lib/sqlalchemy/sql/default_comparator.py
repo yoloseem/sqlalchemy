@@ -13,7 +13,7 @@ from . import type_api
 from .elements import BindParameter, True_, False_, BinaryExpression, \
         Null, _const_expr, _clause_element_as_expr, \
         ClauseList, ColumnElement, TextClause, UnaryExpression, \
-        collate, null, _is_literal
+        collate, _is_literal
 from .selectable import SelectBase, Alias, Selectable, ScalarSelect
 
 class _DefaultColumnComparator(operators.ColumnOperators):
@@ -156,7 +156,7 @@ class _DefaultColumnComparator(operators.ColumnOperators):
                             's either a list of non-selectable values, '
                             'or a selectable: %r' % o)
             elif o is None:
-                o = null()
+                o = Null()
             else:
                 o = expr._bind_param(op, o)
             args.append(o)

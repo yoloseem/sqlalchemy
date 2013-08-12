@@ -33,9 +33,9 @@ from .elements import ClauseElement, ColumnElement,\
   BindParameter, UnaryExpression, BooleanClauseList, \
   Label, Cast, Case, ColumnClause, TextClause, Over, Null, \
   True_, False_, BinaryExpression, Tuple, TypeClause, Extract, \
-  Grouping, and_, or_, not_, null, false, true, \
-  collate, cast, extract, literal_column, between,\
-  case, label, literal, outparam, \
+  Grouping, and_, or_, not_, \
+  collate, literal_column, between,\
+  literal, outparam, \
   tuple_, type_coerce, ClauseList
 
 from .base import ColumnCollection, Generative, Executable, \
@@ -43,8 +43,9 @@ from .base import ColumnCollection, Generative, Executable, \
 
 from .selectable import Alias, Join, Select, Selectable, TableClause, \
         CompoundSelect, FromClause, FromGrouping, SelectBase, \
-        alias, except_, except_all, intersect, intersect_all, \
-        subquery, union, union_all, HasPrefixes, Exists, ScalarSelect
+        alias, \
+        subquery, HasPrefixes, Exists, ScalarSelect
+
 
 from .dml import Insert, Update, Delete
 
@@ -54,7 +55,8 @@ from .base import _from_objects
 from .elements import _literal_as_text, _clause_element_as_expr,\
   _is_column, _labeled, _only_column_elements, _string_or_unprintable, \
     _truncated_label, _clone, _cloned_difference, _cloned_intersection,\
-    _column_as_key, _literal_as_binds, _select_iterables, _corresponding_column_or_error
+    _column_as_key, _literal_as_binds, _select_iterables, \
+    _corresponding_column_or_error
 from .selectable import _interpret_as_from
 
 
@@ -64,6 +66,18 @@ text = public_factory(TextClause)
 table = public_factory(TableClause)
 column = public_factory(ColumnClause)
 over = public_factory(Over)
+label = public_factory(Label)
+case = public_factory(Case)
+cast = public_factory(Cast)
+extract = public_factory(Extract)
+
+except_ = public_factory(CompoundSelect._create_except)
+except_all = public_factory(CompoundSelect._create_except_all)
+intersect = public_factory(CompoundSelect._create_intersect)
+intersect_all = public_factory(CompoundSelect._create_intersect_all)
+union = public_factory(CompoundSelect._create_union)
+union_all = public_factory(CompoundSelect._create_union_all)
+
 
 exists = public_factory(Exists)
 nullsfirst = public_factory(UnaryExpression._create_nullsfirst)
@@ -71,6 +85,10 @@ nullslast = public_factory(UnaryExpression._create_nullslast)
 asc = public_factory(UnaryExpression._create_asc)
 desc = public_factory(UnaryExpression._create_desc)
 distinct = public_factory(UnaryExpression._create_distinct)
+
+true = public_factory(True_)
+false = public_factory(False_)
+null = public_factory(Null)
 
 join = public_factory(Join._create_join)
 outerjoin = public_factory(Join._create_outerjoin)

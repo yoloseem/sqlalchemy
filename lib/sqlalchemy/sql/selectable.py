@@ -60,113 +60,6 @@ def subquery(alias, *args, **kwargs):
     return Select(*args, **kwargs).alias(alias)
 
 
-def union(*selects, **kwargs):
-    """Return a ``UNION`` of multiple selectables.
-
-    The returned object is an instance of
-    :class:`.CompoundSelect`.
-
-    A similar :func:`union()` method is available on all
-    :class:`.FromClause` subclasses.
-
-    \*selects
-      a list of :class:`.Select` instances.
-
-    \**kwargs
-       available keyword arguments are the same as those of
-       :func:`select`.
-
-    """
-    return CompoundSelect(CompoundSelect.UNION, *selects, **kwargs)
-
-
-def union_all(*selects, **kwargs):
-    """Return a ``UNION ALL`` of multiple selectables.
-
-    The returned object is an instance of
-    :class:`.CompoundSelect`.
-
-    A similar :func:`union_all()` method is available on all
-    :class:`.FromClause` subclasses.
-
-    \*selects
-      a list of :class:`.Select` instances.
-
-    \**kwargs
-      available keyword arguments are the same as those of
-      :func:`select`.
-
-    """
-    return CompoundSelect(CompoundSelect.UNION_ALL, *selects, **kwargs)
-
-
-def except_(*selects, **kwargs):
-    """Return an ``EXCEPT`` of multiple selectables.
-
-    The returned object is an instance of
-    :class:`.CompoundSelect`.
-
-    \*selects
-      a list of :class:`.Select` instances.
-
-    \**kwargs
-      available keyword arguments are the same as those of
-      :func:`select`.
-
-    """
-    return CompoundSelect(CompoundSelect.EXCEPT, *selects, **kwargs)
-
-
-def except_all(*selects, **kwargs):
-    """Return an ``EXCEPT ALL`` of multiple selectables.
-
-    The returned object is an instance of
-    :class:`.CompoundSelect`.
-
-    \*selects
-      a list of :class:`.Select` instances.
-
-    \**kwargs
-      available keyword arguments are the same as those of
-      :func:`select`.
-
-    """
-    return CompoundSelect(CompoundSelect.EXCEPT_ALL, *selects, **kwargs)
-
-
-def intersect(*selects, **kwargs):
-    """Return an ``INTERSECT`` of multiple selectables.
-
-    The returned object is an instance of
-    :class:`.CompoundSelect`.
-
-    \*selects
-      a list of :class:`.Select` instances.
-
-    \**kwargs
-      available keyword arguments are the same as those of
-      :func:`select`.
-
-    """
-    return CompoundSelect(CompoundSelect.INTERSECT, *selects, **kwargs)
-
-
-def intersect_all(*selects, **kwargs):
-    """Return an ``INTERSECT ALL`` of multiple selectables.
-
-    The returned object is an instance of
-    :class:`.CompoundSelect`.
-
-    \*selects
-      a list of :class:`.Select` instances.
-
-    \**kwargs
-      available keyword arguments are the same as those of
-      :func:`select`.
-
-    """
-    return CompoundSelect(CompoundSelect.INTERSECT_ALL, *selects, **kwargs)
-
 
 def alias(selectable, name=None, flat=False):
     """Return an :class:`.Alias` object.
@@ -1590,6 +1483,119 @@ class CompoundSelect(SelectBase):
 
         SelectBase.__init__(self, **kwargs)
 
+    @classmethod
+    def _create_union(cls, *selects, **kwargs):
+        """Return a ``UNION`` of multiple selectables.
+
+        The returned object is an instance of
+        :class:`.CompoundSelect`.
+
+        A similar :func:`union()` method is available on all
+        :class:`.FromClause` subclasses.
+
+        \*selects
+          a list of :class:`.Select` instances.
+
+        \**kwargs
+           available keyword arguments are the same as those of
+           :func:`select`.
+
+        """
+        return CompoundSelect(CompoundSelect.UNION, *selects, **kwargs)
+
+    @classmethod
+    def _create_union_all(cls, *selects, **kwargs):
+        """Return a ``UNION ALL`` of multiple selectables.
+
+        The returned object is an instance of
+        :class:`.CompoundSelect`.
+
+        A similar :func:`union_all()` method is available on all
+        :class:`.FromClause` subclasses.
+
+        \*selects
+          a list of :class:`.Select` instances.
+
+        \**kwargs
+          available keyword arguments are the same as those of
+          :func:`select`.
+
+        """
+        return CompoundSelect(CompoundSelect.UNION_ALL, *selects, **kwargs)
+
+
+    @classmethod
+    def _create_except(cls, *selects, **kwargs):
+        """Return an ``EXCEPT`` of multiple selectables.
+
+        The returned object is an instance of
+        :class:`.CompoundSelect`.
+
+        \*selects
+          a list of :class:`.Select` instances.
+
+        \**kwargs
+          available keyword arguments are the same as those of
+          :func:`select`.
+
+        """
+        return CompoundSelect(CompoundSelect.EXCEPT, *selects, **kwargs)
+
+
+    @classmethod
+    def _create_except_all(cls, *selects, **kwargs):
+        """Return an ``EXCEPT ALL`` of multiple selectables.
+
+        The returned object is an instance of
+        :class:`.CompoundSelect`.
+
+        \*selects
+          a list of :class:`.Select` instances.
+
+        \**kwargs
+          available keyword arguments are the same as those of
+          :func:`select`.
+
+        """
+        return CompoundSelect(CompoundSelect.EXCEPT_ALL, *selects, **kwargs)
+
+
+    @classmethod
+    def _create_intersect(cls, *selects, **kwargs):
+        """Return an ``INTERSECT`` of multiple selectables.
+
+        The returned object is an instance of
+        :class:`.CompoundSelect`.
+
+        \*selects
+          a list of :class:`.Select` instances.
+
+        \**kwargs
+          available keyword arguments are the same as those of
+          :func:`select`.
+
+        """
+        return CompoundSelect(CompoundSelect.INTERSECT, *selects, **kwargs)
+
+
+    @classmethod
+    def _create_intersect_all(cls, *selects, **kwargs):
+        """Return an ``INTERSECT ALL`` of multiple selectables.
+
+        The returned object is an instance of
+        :class:`.CompoundSelect`.
+
+        \*selects
+          a list of :class:`.Select` instances.
+
+        \**kwargs
+          available keyword arguments are the same as those of
+          :func:`select`.
+
+        """
+        return CompoundSelect(CompoundSelect.INTERSECT_ALL, *selects, **kwargs)
+
+
     def _scalar_type(self):
         return self.selects[0]._scalar_type()
 
@@ -2606,41 +2612,41 @@ class Select(HasPrefixes, SelectBase):
         """return a SQL UNION of this select() construct against the given
         selectable."""
 
-        return union(self, other, **kwargs)
+        return CompoundSelect._create_union(self, other, **kwargs)
 
     def union_all(self, other, **kwargs):
         """return a SQL UNION ALL of this select() construct against the given
         selectable.
 
         """
-        return union_all(self, other, **kwargs)
+        return CompoundSelect._create_union_all(self, other, **kwargs)
 
     def except_(self, other, **kwargs):
         """return a SQL EXCEPT of this select() construct against the given
         selectable."""
 
-        return except_(self, other, **kwargs)
+        return CompoundSelect._create_except(self, other, **kwargs)
 
     def except_all(self, other, **kwargs):
         """return a SQL EXCEPT ALL of this select() construct against the
         given selectable.
 
         """
-        return except_all(self, other, **kwargs)
+        return CompoundSelect._create_except_all(self, other, **kwargs)
 
     def intersect(self, other, **kwargs):
         """return a SQL INTERSECT of this select() construct against the given
         selectable.
 
         """
-        return intersect(self, other, **kwargs)
+        return CompoundSelect._create_intersect(self, other, **kwargs)
 
     def intersect_all(self, other, **kwargs):
         """return a SQL INTERSECT ALL of this select() construct against the
         given selectable.
 
         """
-        return intersect_all(self, other, **kwargs)
+        return CompoundSelect._create_intersect_all(self, other, **kwargs)
 
     def bind(self):
         if self._bind:

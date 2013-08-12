@@ -231,28 +231,6 @@ def _interpret_as_column_or_from(element):
 
 
 
-def null():
-    """Return a :class:`Null` object, which compiles to ``NULL``.
-
-    """
-    return Null()
-
-
-def true():
-    """Return a :class:`True_` object, which compiles to ``true``, or the
-    boolean equivalent for the target dialect.
-
-    """
-    return True_()
-
-
-def false():
-    """Return a :class:`False_` object, which compiles to ``false``, or the
-    boolean equivalent for the target dialect.
-
-    """
-    return False_()
-
 def collate(expression, collation):
     """Return the clause ``expression COLLATE collation``.
 
@@ -287,60 +265,6 @@ def between(ctest, cleft, cright):
     ctest = _literal_as_binds(ctest)
     return ctest.between(cleft, cright)
 
-
-def case(whens, value=None, else_=None):
-    """Produce a ``CASE`` statement.
-
-    whens
-      A sequence of pairs, or alternatively a dict,
-      to be translated into "WHEN / THEN" clauses.
-
-    value
-      Optional for simple case statements, produces
-      a column expression as in "CASE <expr> WHEN ..."
-
-    else\_
-      Optional as well, for case defaults produces
-      the "ELSE" portion of the "CASE" statement.
-
-    The expressions used for THEN and ELSE,
-    when specified as strings, will be interpreted
-    as bound values. To specify textual SQL expressions
-    for these, use the :func:`literal_column`
-    construct.
-
-    The expressions used for the WHEN criterion
-    may only be literal strings when "value" is
-    present, i.e. CASE table.somecol WHEN "x" THEN "y".
-    Otherwise, literal strings are not accepted
-    in this position, and either the text(<string>)
-    or literal(<string>) constructs must be used to
-    interpret raw string values.
-
-    Usage examples::
-
-      case([(orderline.c.qty > 100, item.c.specialprice),
-            (orderline.c.qty > 10, item.c.bulkprice)
-          ], else_=item.c.regularprice)
-      case(value=emp.c.type, whens={
-              'engineer': emp.c.salary * 1.1,
-              'manager':  emp.c.salary * 3,
-          })
-
-    Using :func:`literal_column()`, to allow for databases that
-    do not support bind parameters in the ``then`` clause.  The type
-    can be specified which determines the type of the :func:`case()` construct
-    overall::
-
-        case([(orderline.c.qty > 100,
-                literal_column("'greaterthan100'", String)),
-              (orderline.c.qty > 10, literal_column("'greaterthan10'",
-                String))
-            ], else_=literal_column("'lethan10'", String))
-
-    """
-
-    return Case(whens, value=value, else_=else_)
 
 
 
@@ -434,32 +358,11 @@ def type_coerce(expr, type_):
         return bp
     elif not isinstance(expr, Visitable):
         if expr is None:
-            return null()
+            return Null()
         else:
             return literal(expr, type_=type_)
     else:
         return Label(None, expr, type_=type_)
-
-
-def label(name, obj):
-    """Return a :class:`Label` object for the
-    given :class:`.ColumnElement`.
-
-    A label changes the name of an element in the columns clause of a
-    ``SELECT`` statement, typically via the ``AS`` SQL keyword.
-
-    This functionality is more conveniently available via the
-    :func:`label()` method on :class:`.ColumnElement`.
-
-    name
-      label name
-
-    obj
-      a :class:`.ColumnElement`.
-
-    """
-    return Label(name, obj)
-
 
 
 
@@ -488,11 +391,11 @@ def _const_expr(element):
     if isinstance(element, (Null, False_, True_)):
         return element
     elif element is None:
-        return null()
+        return Null()
     elif element is False:
-        return false()
+        return False_()
     elif element is True:
-        return true()
+        return True_()
     else:
         raise exc.ArgumentError(
             "Expected None, False, or True"
@@ -1434,13 +1337,14 @@ class TextClause(Executable, ClauseElement):
 class Null(ColumnElement):
     """Represent the NULL keyword in a SQL statement.
 
-    Public constructor is the :func:`null()` function.
-
     """
 
     __visit_name__ = 'null'
 
     def __init__(self):
+        """Return a :class:`Null` object, which compiles to ``NULL``.
+
+        """
         self.type = type_api.NULLTYPE
 
     def compare(self, other):
@@ -1450,13 +1354,14 @@ class Null(ColumnElement):
 class False_(ColumnElement):
     """Represent the ``false`` keyword in a SQL statement.
 
-    Public constructor is the :func:`false()` function.
-
     """
 
     __visit_name__ = 'false'
 
     def __init__(self):
+        """Return a :class:`False_` object.
+
+        """
         self.type = type_api.BOOLEANTYPE
 
     def compare(self, other):
@@ -1465,13 +1370,14 @@ class False_(ColumnElement):
 class True_(ColumnElement):
     """Represent the ``true`` keyword in a SQL statement.
 
-    Public constructor is the :func:`true()` function.
-
     """
 
     __visit_name__ = 'true'
 
     def __init__(self):
+        """Return a :class:`True_` object.
+
+        """
         self.type = type_api.BOOLEANTYPE
 
     def compare(self, other):
@@ -1595,9 +1501,62 @@ class Tuple(ClauseList, ColumnElement):
 
 
 class Case(ColumnElement):
+    """Represent a SQL ``CASE`` construct.
+
+
+    """
     __visit_name__ = 'case'
 
     def __init__(self, whens, value=None, else_=None):
+        """Produce a :class:`.Case` object.
+
+        :param whens: A sequence of pairs, or alternatively a dict,
+          to be translated into "WHEN / THEN" clauses.
+
+        :param value: Optional for simple case statements, produces
+          a column expression as in "CASE <expr> WHEN ..."
+
+        :param else\_: Optional as well, for case defaults produces
+          the "ELSE" portion of the "CASE" statement.
+
+        The expressions used for THEN and ELSE,
+        when specified as strings, will be interpreted
+        as bound values. To specify textual SQL expressions
+        for these, use the :func:`literal_column`
+        construct.
+
+        The expressions used for the WHEN criterion
+        may only be literal strings when "value" is
+        present, i.e. CASE table.somecol WHEN "x" THEN "y".
+        Otherwise, literal strings are not accepted
+        in this position, and either the text(<string>)
+        or literal(<string>) constructs must be used to
+        interpret raw string values.
+
+        Usage examples::
+
+          case([(orderline.c.qty > 100, item.c.specialprice),
+                (orderline.c.qty > 10, item.c.bulkprice)
+              ], else_=item.c.regularprice)
+
+          case(value=emp.c.type, whens={
+                  'engineer': emp.c.salary * 1.1,
+                  'manager':  emp.c.salary * 3,
+              })
+
+        Using :func:`.literal_column()`, to allow for databases that
+        do not support bind parameters in the ``then`` clause.  The type
+        can be specified which determines the type of the :func:`case()` construct
+        overall::
+
+            case([(orderline.c.qty > 100,
+                    literal_column("'greaterthan100'", String)),
+                  (orderline.c.qty > 10, literal_column("'greaterthan10'",
+                    String))
+                ], else_=literal_column("'lethan10'", String))
+
+        """
+
         try:
             whens = util.dictlike_iteritems(whens)
         except TypeError:
@@ -1677,28 +1636,30 @@ def literal_column(text, type_=None):
     """
     return ColumnClause(text, type_=type_, is_literal=True)
 
-def cast(clause, totype, **kwargs):
-    """Return a ``CAST`` function.
-
-    Equivalent of SQL ``CAST(clause AS totype)``.
-
-    Use with a :class:`~sqlalchemy.types.TypeEngine` subclass, i.e::
-
-      cast(table.c.unit_price * table.c.qty, Numeric(10,4))
-
-    or::
-
-      cast(table.c.timestamp, DATE)
-
-    """
-    return Cast(clause, totype, **kwargs)
 
 
 class Cast(ColumnElement):
+    """Represent the SQL ``CAST`` construct."""
 
     __visit_name__ = 'cast'
 
     def __init__(self, clause, totype, **kwargs):
+        """Return a :class:`.Cast` object.
+
+        Equivalent of SQL ``CAST(clause AS totype)``.
+
+        Use with a :class:`~sqlalchemy.types.TypeEngine` subclass, i.e::
+
+          cast(table.c.unit_price * table.c.qty, Numeric(10,4))
+
+        or::
+
+          cast(table.c.timestamp, DATE)
+
+        :class:`.Cast` is available using :func:`.cast` or alternatively
+        ``func.cast`` from the :attr:`.func` namespace.
+
+        """
         self.type = type_api.to_instance(totype)
         self.clause = _literal_as_binds(clause, None)
         self.typeclause = TypeClause(self.type)
@@ -1715,16 +1676,19 @@ class Cast(ColumnElement):
         return self.clause._from_objects
 
 
-def extract(field, expr):
-    """Return the clause ``extract(field FROM expr)``."""
-
-    return Extract(field, expr)
-
 class Extract(ColumnElement):
+    """Represent a SQL EXTRACT clause, ``extract(field FROM expr)``."""
 
     __visit_name__ = 'extract'
 
     def __init__(self, field, expr, **kwargs):
+        """Return a :class:`.Extract` construct.
+
+        This is typically available as :func:`.extract`
+        as well as ``func.extract`` from the
+        :attr:`.func` namespace.
+
+        """
         self.type = type_api.INTEGERTYPE
         self.field = field
         self.expr = _literal_as_binds(expr, None)
@@ -2101,15 +2065,25 @@ class Label(ColumnElement):
     Represent a label, as typically applied to any column-level
     element using the ``AS`` sql keyword.
 
-    This object is constructed from the :func:`label()` module level
-    function as well as the :func:`label()` method available on all
-    :class:`.ColumnElement` subclasses.
-
     """
 
     __visit_name__ = 'label'
 
     def __init__(self, name, element, type_=None):
+        """Return a :class:`Label` object for the
+        given :class:`.ColumnElement`.
+
+        A label changes the name of an element in the columns clause of a
+        ``SELECT`` statement, typically via the ``AS`` SQL keyword.
+
+        This functionality is more conveniently available via the
+        :meth:`.ColumnElement.label` method on :class:`.ColumnElement`.
+
+        :param name: label name
+
+        :param obj: a :class:`.ColumnElement`.
+
+        """
         while isinstance(element, Label):
             element = element.element
         if name:

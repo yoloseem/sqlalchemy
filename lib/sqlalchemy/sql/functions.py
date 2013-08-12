@@ -9,7 +9,7 @@
 """
 from . import sqltypes, schema
 from .base import Executable
-from .elements import ClauseList, cast, extract, _literal_as_binds, \
+from .elements import ClauseList, Cast, Extract, _literal_as_binds, \
         literal_column, _type_from_args, ColumnElement, _clone,\
         Over, BindParameter
 from .selectable import FromClause, Select
@@ -406,8 +406,8 @@ class GenericFunction(util.with_metaclass(_GenericMeta, Function)):
             kwargs.pop("type_", None) or getattr(self, 'type', None))
 
 
-register_function("cast", cast)
-register_function("extract", extract)
+register_function("cast", Cast)
+register_function("extract", Extract)
 
 
 class next_value(GenericFunction):
