@@ -35,8 +35,7 @@ from .elements import ClauseElement, ColumnElement,\
   True_, False_, BinaryExpression, Tuple, TypeClause, Extract, \
   Grouping, and_, or_, not_, \
   collate, literal_column, between,\
-  literal, outparam, \
-  tuple_, type_coerce, ClauseList
+  literal, outparam, type_coerce, ClauseList
 
 from .base import ColumnCollection, Generative, Executable, \
           PARSE_AUTOCOMMIT
@@ -64,6 +63,7 @@ label = public_factory(Label)
 case = public_factory(Case)
 cast = public_factory(Cast)
 extract = public_factory(Extract)
+tuple_ = public_factory(Tuple)
 except_ = public_factory(CompoundSelect._create_except)
 except_all = public_factory(CompoundSelect._create_except_all)
 intersect = public_factory(CompoundSelect._create_intersect)

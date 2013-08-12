@@ -10,226 +10,8 @@ from .base import Executable, PARSE_AUTOCOMMIT, Immutable, NO_ARG
 import re
 import operator
 
-class _truncated_label(util.text_type):
-    """A unicode subclass used to identify symbolic "
-    "names that may require truncation."""
-
-    def apply_map(self, map_):
-        return self
-
-# for backwards compatibility in case
-# someone is re-implementing the
-# _truncated_identifier() sequence in a custom
-# compiler
-_generated_label = _truncated_label
-
-
-class _anonymous_label(_truncated_label):
-    """A unicode subclass used to identify anonymously
-    generated names."""
-
-    def __add__(self, other):
-        return _anonymous_label(
-                    util.text_type(self) +
-                    util.text_type(other))
-
-    def __radd__(self, other):
-        return _anonymous_label(
-                    util.text_type(other) +
-                    util.text_type(self))
-
-    def apply_map(self, map_):
-        return self % map_
-
-
-def _as_truncated(value):
-    """coerce the given value to :class:`._truncated_label`.
-
-    Existing :class:`._truncated_label` and
-    :class:`._anonymous_label` objects are passed
-    unchanged.
-    """
-
-    if isinstance(value, _truncated_label):
-        return value
-    else:
-        return _truncated_label(value)
-
-
-def _string_or_unprintable(element):
-    if isinstance(element, util.string_types):
-        return element
-    else:
-        try:
-            return str(element)
-        except:
-            return "unprintable element %r" % element
-
-
 def _clone(element, **kw):
     return element._clone()
-
-
-def _expand_cloned(elements):
-    """expand the given set of ClauseElements to be the set of all 'cloned'
-    predecessors.
-
-    """
-    return itertools.chain(*[x._cloned_set for x in elements])
-
-
-def _select_iterables(elements):
-    """expand tables into individual columns in the
-    given list of column expressions.
-
-    """
-    return itertools.chain(*[c._select_iterable for c in elements])
-
-
-def _cloned_intersection(a, b):
-    """return the intersection of sets a and b, counting
-    any overlap between 'cloned' predecessors.
-
-    The returned set is in terms of the entities present within 'a'.
-
-    """
-    all_overlap = set(_expand_cloned(a)).intersection(_expand_cloned(b))
-    return set(elem for elem in a
-               if all_overlap.intersection(elem._cloned_set))
-
-def _cloned_difference(a, b):
-    all_overlap = set(_expand_cloned(a)).intersection(_expand_cloned(b))
-    return set(elem for elem in a
-                if not all_overlap.intersection(elem._cloned_set))
-
-
-def _labeled(element):
-    if not hasattr(element, 'name'):
-        return element.label(None)
-    else:
-        return element
-
-
-def _is_column(col):
-    """True if ``col`` is an instance of :class:`.ColumnElement`."""
-
-    return isinstance(col, ColumnElement)
-
-
-def _find_columns(clause):
-    """locate Column objects within the given expression."""
-
-    cols = util.column_set()
-    traverse(clause, {}, {'column': cols.add})
-    return cols
-
-
-# there is some inconsistency here between the usage of
-# inspect() vs. checking for Visitable and __clause_element__.
-# Ideally all functions here would derive from inspect(),
-# however the inspect() versions add significant callcount
-# overhead for critical functions like _interpret_as_column_or_from().
-# Generally, the column-based functions are more performance critical
-# and are fine just checking for __clause_element__().  it's only
-# _interpret_as_from() where we'd like to be able to receive ORM entities
-# that have no defined namespace, hence inspect() is needed there.
-
-
-def _column_as_key(element):
-    if isinstance(element, util.string_types):
-        return element
-    if hasattr(element, '__clause_element__'):
-        element = element.__clause_element__()
-    try:
-        return element.key
-    except AttributeError:
-        return None
-
-
-def _clause_element_as_expr(element):
-    if hasattr(element, '__clause_element__'):
-        return element.__clause_element__()
-    else:
-        return element
-
-
-def _literal_as_text(element):
-    if isinstance(element, Visitable):
-        return element
-    elif hasattr(element, '__clause_element__'):
-        return element.__clause_element__()
-    elif isinstance(element, util.string_types):
-        return TextClause(util.text_type(element))
-    elif isinstance(element, (util.NoneType, bool)):
-        return _const_expr(element)
-    else:
-        raise exc.ArgumentError(
-            "SQL expression object or string expected."
-        )
-
-
-def _no_literals(element):
-    if hasattr(element, '__clause_element__'):
-        return element.__clause_element__()
-    elif not isinstance(element, Visitable):
-        raise exc.ArgumentError("Ambiguous literal: %r.  Use the 'text()' "
-                                "function to indicate a SQL expression "
-                                "literal, or 'literal()' to indicate a "
-                                "bound value." % element)
-    else:
-        return element
-
-
-def _is_literal(element):
-    return not isinstance(element, Visitable) and \
-            not hasattr(element, '__clause_element__')
-
-
-def _only_column_elements_or_none(element, name):
-    if element is None:
-        return None
-    else:
-        return _only_column_elements(element, name)
-
-
-def _only_column_elements(element, name):
-    if hasattr(element, '__clause_element__'):
-        element = element.__clause_element__()
-    if not isinstance(element, ColumnElement):
-        raise exc.ArgumentError(
-                "Column-based expression object expected for argument "
-                "'%s'; got: '%s', type %s" % (name, element, type(element)))
-    return element
-
-
-def _literal_as_binds(element, name=None, type_=None):
-    if hasattr(element, '__clause_element__'):
-        return element.__clause_element__()
-    elif not isinstance(element, Visitable):
-        if element is None:
-            return Null()
-        else:
-            return BindParameter(name, element, type_=type_, unique=True)
-    else:
-        return element
-
-
-def _interpret_as_column_or_from(element):
-    if isinstance(element, Visitable):
-        return element
-    elif hasattr(element, '__clause_element__'):
-        return element.__clause_element__()
-
-    insp = inspection.inspect(element, raiseerr=False)
-    if insp is None:
-        if isinstance(element, (util.NoneType, bool)):
-            return _const_expr(element)
-    elif hasattr(insp, "selectable"):
-        return insp.selectable
-
-    return ColumnClause(str(element), is_literal=True)
-
-
 
 def collate(expression, collation):
     """Return the clause ``expression COLLATE collation``.
@@ -250,8 +32,6 @@ def collate(expression, collation):
         _literal_as_text(collation),
         operators.collate, type_=expr.type)
 
-
-
 def between(ctest, cleft, cright):
     """Return a ``BETWEEN`` predicate clause.
 
@@ -264,10 +44,6 @@ def between(ctest, cleft, cright):
     """
     ctest = _literal_as_binds(ctest)
     return ctest.between(cleft, cright)
-
-
-
-
 
 def literal(value, type_=None):
     """Return a literal clause, bound to a bind parameter.
@@ -289,26 +65,6 @@ def literal(value, type_=None):
     """
     return BindParameter(None, value, type_=type_, unique=True)
 
-
-def tuple_(*expr):
-    """Return a SQL tuple.
-
-    Main usage is to produce a composite IN construct::
-
-        tuple_(table.c.col1, table.c.col2).in_(
-            [(1, 2), (5, 12), (10, 19)]
-        )
-
-    .. warning::
-
-        The composite IN construct is not supported by all backends,
-        and is currently known to work on Postgresql and MySQL,
-        but not SQLite.   Unsupported backends will raise
-        a subclass of :class:`~sqlalchemy.exc.DBAPIError` when such
-        an expression is invoked.
-
-    """
-    return Tuple(*expr)
 
 
 def type_coerce(expr, type_):
@@ -380,50 +136,6 @@ def outparam(key, type_=None):
     """
     return BindParameter(
                 key, None, type_=type_, unique=False, isoutparam=True)
-
-
-
-
-
-
-
-def _const_expr(element):
-    if isinstance(element, (Null, False_, True_)):
-        return element
-    elif element is None:
-        return Null()
-    elif element is False:
-        return False_()
-    elif element is True:
-        return True_()
-    else:
-        raise exc.ArgumentError(
-            "Expected None, False, or True"
-        )
-
-
-def _type_from_args(args):
-    for a in args:
-        if not a.type._isnull:
-            return a.type
-    else:
-        return type_api.NULLTYPE
-
-
-def _corresponding_column_or_error(fromclause, column,
-                                        require_embedded=False):
-    c = fromclause.corresponding_column(column,
-            require_embedded=require_embedded)
-    if c is None:
-        raise exc.InvalidRequestError(
-                "Given column '%s', attached to table '%s', "
-                "failed to locate a corresponding column from table '%s'"
-                %
-                (column,
-                    getattr(column, 'table', None),
-                    fromclause.description)
-                )
-    return c
 
 
 def and_(*clauses):
@@ -1480,8 +1192,29 @@ class BooleanClauseList(ClauseList, ColumnElement):
 
 
 class Tuple(ClauseList, ColumnElement):
+    """Represent a SQL tuple."""
 
     def __init__(self, *clauses, **kw):
+        """Return a :class:`.Tuple`.
+
+        Main usage is to produce a composite IN construct::
+
+            from sqlalchemy import tuple_
+
+            tuple_(table.c.col1, table.c.col2).in_(
+                [(1, 2), (5, 12), (10, 19)]
+            )
+
+        .. warning::
+
+            The composite IN construct is not supported by all backends,
+            and is currently known to work on Postgresql and MySQL,
+            but not SQLite.   Unsupported backends will raise
+            a subclass of :class:`~sqlalchemy.exc.DBAPIError` when such
+            an expression is invoked.
+
+        """
+
         clauses = [_literal_as_binds(c) for c in clauses]
         self.type = kw.pop('type_', None)
         if self.type is None:
@@ -2350,6 +2083,261 @@ class RollbackToSavepointClause(_IdentifiedClause):
 
 class ReleaseSavepointClause(_IdentifiedClause):
     __visit_name__ = 'release_savepoint'
+
+
+class _truncated_label(util.text_type):
+    """A unicode subclass used to identify symbolic "
+    "names that may require truncation."""
+
+    def apply_map(self, map_):
+        return self
+
+# for backwards compatibility in case
+# someone is re-implementing the
+# _truncated_identifier() sequence in a custom
+# compiler
+_generated_label = _truncated_label
+
+
+class _anonymous_label(_truncated_label):
+    """A unicode subclass used to identify anonymously
+    generated names."""
+
+    def __add__(self, other):
+        return _anonymous_label(
+                    util.text_type(self) +
+                    util.text_type(other))
+
+    def __radd__(self, other):
+        return _anonymous_label(
+                    util.text_type(other) +
+                    util.text_type(self))
+
+    def apply_map(self, map_):
+        return self % map_
+
+
+def _as_truncated(value):
+    """coerce the given value to :class:`._truncated_label`.
+
+    Existing :class:`._truncated_label` and
+    :class:`._anonymous_label` objects are passed
+    unchanged.
+    """
+
+    if isinstance(value, _truncated_label):
+        return value
+    else:
+        return _truncated_label(value)
+
+
+def _string_or_unprintable(element):
+    if isinstance(element, util.string_types):
+        return element
+    else:
+        try:
+            return str(element)
+        except:
+            return "unprintable element %r" % element
+
+
+def _expand_cloned(elements):
+    """expand the given set of ClauseElements to be the set of all 'cloned'
+    predecessors.
+
+    """
+    return itertools.chain(*[x._cloned_set for x in elements])
+
+
+def _select_iterables(elements):
+    """expand tables into individual columns in the
+    given list of column expressions.
+
+    """
+    return itertools.chain(*[c._select_iterable for c in elements])
+
+
+def _cloned_intersection(a, b):
+    """return the intersection of sets a and b, counting
+    any overlap between 'cloned' predecessors.
+
+    The returned set is in terms of the entities present within 'a'.
+
+    """
+    all_overlap = set(_expand_cloned(a)).intersection(_expand_cloned(b))
+    return set(elem for elem in a
+               if all_overlap.intersection(elem._cloned_set))
+
+def _cloned_difference(a, b):
+    all_overlap = set(_expand_cloned(a)).intersection(_expand_cloned(b))
+    return set(elem for elem in a
+                if not all_overlap.intersection(elem._cloned_set))
+
+
+def _labeled(element):
+    if not hasattr(element, 'name'):
+        return element.label(None)
+    else:
+        return element
+
+
+def _is_column(col):
+    """True if ``col`` is an instance of :class:`.ColumnElement`."""
+
+    return isinstance(col, ColumnElement)
+
+
+def _find_columns(clause):
+    """locate Column objects within the given expression."""
+
+    cols = util.column_set()
+    traverse(clause, {}, {'column': cols.add})
+    return cols
+
+
+# there is some inconsistency here between the usage of
+# inspect() vs. checking for Visitable and __clause_element__.
+# Ideally all functions here would derive from inspect(),
+# however the inspect() versions add significant callcount
+# overhead for critical functions like _interpret_as_column_or_from().
+# Generally, the column-based functions are more performance critical
+# and are fine just checking for __clause_element__().  it's only
+# _interpret_as_from() where we'd like to be able to receive ORM entities
+# that have no defined namespace, hence inspect() is needed there.
+
+
+def _column_as_key(element):
+    if isinstance(element, util.string_types):
+        return element
+    if hasattr(element, '__clause_element__'):
+        element = element.__clause_element__()
+    try:
+        return element.key
+    except AttributeError:
+        return None
+
+
+def _clause_element_as_expr(element):
+    if hasattr(element, '__clause_element__'):
+        return element.__clause_element__()
+    else:
+        return element
+
+
+def _literal_as_text(element):
+    if isinstance(element, Visitable):
+        return element
+    elif hasattr(element, '__clause_element__'):
+        return element.__clause_element__()
+    elif isinstance(element, util.string_types):
+        return TextClause(util.text_type(element))
+    elif isinstance(element, (util.NoneType, bool)):
+        return _const_expr(element)
+    else:
+        raise exc.ArgumentError(
+            "SQL expression object or string expected."
+        )
+
+
+def _no_literals(element):
+    if hasattr(element, '__clause_element__'):
+        return element.__clause_element__()
+    elif not isinstance(element, Visitable):
+        raise exc.ArgumentError("Ambiguous literal: %r.  Use the 'text()' "
+                                "function to indicate a SQL expression "
+                                "literal, or 'literal()' to indicate a "
+                                "bound value." % element)
+    else:
+        return element
+
+
+def _is_literal(element):
+    return not isinstance(element, Visitable) and \
+            not hasattr(element, '__clause_element__')
+
+
+def _only_column_elements_or_none(element, name):
+    if element is None:
+        return None
+    else:
+        return _only_column_elements(element, name)
+
+
+def _only_column_elements(element, name):
+    if hasattr(element, '__clause_element__'):
+        element = element.__clause_element__()
+    if not isinstance(element, ColumnElement):
+        raise exc.ArgumentError(
+                "Column-based expression object expected for argument "
+                "'%s'; got: '%s', type %s" % (name, element, type(element)))
+    return element
+
+
+def _literal_as_binds(element, name=None, type_=None):
+    if hasattr(element, '__clause_element__'):
+        return element.__clause_element__()
+    elif not isinstance(element, Visitable):
+        if element is None:
+            return Null()
+        else:
+            return BindParameter(name, element, type_=type_, unique=True)
+    else:
+        return element
+
+
+def _interpret_as_column_or_from(element):
+    if isinstance(element, Visitable):
+        return element
+    elif hasattr(element, '__clause_element__'):
+        return element.__clause_element__()
+
+    insp = inspection.inspect(element, raiseerr=False)
+    if insp is None:
+        if isinstance(element, (util.NoneType, bool)):
+            return _const_expr(element)
+    elif hasattr(insp, "selectable"):
+        return insp.selectable
+
+    return ColumnClause(str(element), is_literal=True)
+
+
+def _const_expr(element):
+    if isinstance(element, (Null, False_, True_)):
+        return element
+    elif element is None:
+        return Null()
+    elif element is False:
+        return False_()
+    elif element is True:
+        return True_()
+    else:
+        raise exc.ArgumentError(
+            "Expected None, False, or True"
+        )
+
+
+def _type_from_args(args):
+    for a in args:
+        if not a.type._isnull:
+            return a.type
+    else:
+        return type_api.NULLTYPE
+
+
+def _corresponding_column_or_error(fromclause, column,
+                                        require_embedded=False):
+    c = fromclause.corresponding_column(column,
+            require_embedded=require_embedded)
+    if c is None:
+        raise exc.InvalidRequestError(
+                "Given column '%s', attached to table '%s', "
+                "failed to locate a corresponding column from table '%s'"
+                %
+                (column,
+                    getattr(column, 'table', None),
+                    fromclause.description)
+                )
+    return c
 
 
 class AnnotatedColumnElement(Annotated):

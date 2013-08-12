@@ -104,8 +104,6 @@ def alias(selectable, name=None, flat=False):
     return selectable.alias(name=name, flat=flat)
 
 
-
-
 class Selectable(ClauseElement):
     """mark a class as being selectable"""
     __visit_name__ = 'selectable'
