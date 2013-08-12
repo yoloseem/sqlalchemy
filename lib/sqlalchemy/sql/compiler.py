@@ -1852,7 +1852,7 @@ class SQLCompiler(Compiled):
                     # add it to values() in an "as-is" state,
                     # coercing right side to bound param
                     if elements._is_literal(v):
-                        v = self.process(elements.bindparam(None, v, type_=k.type))
+                        v = self.process(elements.BindParameter(None, v, type_=k.type))
                     else:
                         v = self.process(v.self_group())
 

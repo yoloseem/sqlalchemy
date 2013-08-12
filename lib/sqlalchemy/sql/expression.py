@@ -18,7 +18,7 @@ __all__ = [
     'literal', 'literal_column', 'not_', 'null', 'nullsfirst', 'nullslast',
     'or_', 'outparam', 'outerjoin', 'over', 'select', 'subquery',
     'table', 'text',
-    'tuple_', 'type_coerce', 'union', 'union_all', 'update', ]
+    'tuple_', 'type_coerce', 'union', 'union_all', 'update']
 
 
 from .visitors import Visitable
@@ -33,11 +33,8 @@ from .elements import ClauseElement, ColumnElement,\
   case, label, literal, outparam, \
   tuple_, type_coerce, ClauseList
 
-from .elements import _literal_as_text, _clause_element_as_expr,\
-  is_column, _labeled, _only_column_elements, _string_or_unprintable, \
-    _truncated_label, _clone
-
-from .base import ColumnCollection, Generative, Executable, PARSE_AUTOCOMMIT, _from_objects
+from .base import ColumnCollection, Generative, Executable, \
+          PARSE_AUTOCOMMIT
 
 from .selectable import Alias, Join, Select, Selectable, TableClause, \
         CompoundSelect, FromClause, FromGrouping, SelectBase, \
@@ -46,6 +43,12 @@ from .selectable import Alias, Join, Select, Selectable, TableClause, \
 
 from .dml import Insert, Update, Delete
 
+# internal functions still being called from tests and the ORM,
+# these might be better off in some other namespace
+from .base import _from_objects
+from .elements import _literal_as_text, _clause_element_as_expr,\
+  is_column, _labeled, _only_column_elements, _string_or_unprintable, \
+    _truncated_label, _clone, _cloned_difference, _cloned_intersection
 from .selectable import _interpret_as_from
 
 

@@ -31,8 +31,6 @@ class TypeEngine(Visitable):
         """Base class for custom comparison operations defined at the
         type level.  See :attr:`.TypeEngine.comparator_factory`.
 
-        The public base class for :class:`.TypeEngine.Comparator`
-        is :class:`.ColumnOperators`.
 
         """
 
@@ -41,6 +39,7 @@ class TypeEngine(Visitable):
 
         def __reduce__(self):
             return _reconstitute_comparator, (self.expr, )
+
 
     hashable = True
     """Flag, if False, means values from this type aren't hashable.
@@ -243,20 +242,17 @@ class TypeEngine(Visitable):
         """
         return Variant(self, {dialect_name: type_})
 
-    def _affinity_base(self):
-        return TypeEngine
 
     @util.memoized_property
     def _type_affinity(self):
         """Return a rudimental 'affinity' value expressing the general class
         of type."""
 
-        affinity_base = self._affinity_base()
         typ = None
         for t in self.__class__.__mro__:
-            if t is affinity_base:
+            if t in (TypeEngine, UserDefinedType):
                 return typ
-            elif issubclass(t, affinity_base):
+            elif issubclass(t, (TypeEngine, UserDefinedType)):
                 typ = t
         else:
             return self.__class__
@@ -323,14 +319,14 @@ class TypeEngine(Visitable):
         """
         return util.constructor_copy(self, cls, **kw)
 
+
     def coerce_compared_value(self, op, value):
         """Suggest a type for a 'coerced' Python value in an expression.
 
         Given an operator and value, gives the type a chance
         to return a type which the value should be coerced into.
 
-        The default implementation is provided by :class:`.StandardSQLOperators`.
-        Its behavior is conservative; if the right-hand
+        The default behavior here is conservative; if the right-hand
         side is already coerced into a SQL type based on its
         Python type, it is usually left alone.
 
@@ -343,7 +339,12 @@ class TypeEngine(Visitable):
         end-user customization of this behavior.
 
         """
-        raise NotImplementedError()
+        _coerced_type = _type_map.get(type(value), NULLTYPE)
+        if _coerced_type is NULLTYPE or _coerced_type._type_affinity \
+            is self._type_affinity:
+            return self
+        else:
+            return _coerced_type
 
     def _compare_type_affinity(self, other):
         return self._type_affinity is other._type_affinity
@@ -426,8 +427,6 @@ class UserDefinedType(TypeEngine):
     """
     __visit_name__ = "user_defined"
 
-    def _affinity_base(self):
-        return UserDefinedType
 
     class Comparator(TypeEngine.Comparator):
         def _adapt_expression(self, op, other_comparator):
@@ -592,13 +591,16 @@ class TypeDecorator(TypeEngine):
     """
 
     class Comparator(TypeEngine.Comparator):
+
         def operate(self, op, *other, **kwargs):
-            #kwargs['_python_is_types'] = self.expr.type.coerce_to_is_types
-            return self.expr.type.operate(op, *other, **kwargs)
+            kwargs['_python_is_types'] = self.expr.type.coerce_to_is_types
+            return super(TypeDecorator.Comparator, self).operate(
+                                                        op, *other, **kwargs)
 
         def reverse_operate(self, op, other, **kwargs):
-            #kwargs['_python_is_types'] = self.expr.type.coerce_to_is_types
-            return self.expr.type.reverse_operate(op, other, **kwargs)
+            kwargs['_python_is_types'] = self.expr.type.coerce_to_is_types
+            return super(TypeDecorator.Comparator, self).reverse_operate(
+                                                        op, other, **kwargs)
 
     @property
     def comparator_factory(self):

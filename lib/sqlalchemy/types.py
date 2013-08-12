@@ -8,6 +8,13 @@
 
 """
 
+from .sql.type_api import (
+    TypeEngine,
+    TypeDecorator,
+    Variant,
+    to_instance,
+    UserDefinedType
+)
 from .sql.sqltypes import (
     BIGINT,
     BINARY,
@@ -35,6 +42,7 @@ from .sql.sqltypes import (
     LargeBinary,
     NCHAR,
     NVARCHAR,
+    NullType,
     NULLTYPE,
     NUMERIC,
     Numeric,
@@ -49,11 +57,8 @@ from .sql.sqltypes import (
     TIMESTAMP,
     Text,
     Time,
-    TypeDecorator,
-    TypeEngine,
     Unicode,
     UnicodeText,
-    UserDefinedType,
     VARBINARY,
     VARCHAR,
     )

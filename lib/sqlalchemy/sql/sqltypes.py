@@ -11,7 +11,7 @@
 import datetime as dt
 import codecs
 
-from .type_api import TypeEngine, TypeDecorator, UserDefinedType, \
+from .type_api import TypeEngine, TypeDecorator, \
             to_instance, adapt_type
 from .default_comparator import _DefaultColumnComparator
 from .. import exc, util, processors
@@ -23,44 +23,6 @@ import decimal
 NoneType = type(None)
 if util.jython:
     import array
-
-
-class StandardSQLOperators(TypeEngine):
-    class Comparator(_DefaultColumnComparator, TypeEngine.Comparator):
-        @util.memoized_property
-        def BOOLEANTYPE(self):
-            return BOOLEANTYPE
-
-    comparator_factory = Comparator
-
-    def coerce_compared_value(self, op, value):
-        """Suggest a type for a 'coerced' Python value in an expression.
-
-        Given an operator and value, gives the type a chance
-        to return a type which the value should be coerced into.
-
-        The default behavior here is conservative; if the right-hand
-        side is already coerced into a SQL type based on its
-        Python type, it is usually left alone.
-
-        End-user functionality extension here should generally be via
-        :class:`.TypeDecorator`, which provides more liberal behavior in that
-        it defaults to coercing the other side of the expression into this
-        type, thus applying special Python conversions above and beyond those
-        needed by the DBAPI to both ides. It also provides the public method
-        :meth:`.TypeDecorator.coerce_compared_value` which is intended for
-        end-user customization of this behavior.
-
-        """
-        _coerced_type = _type_map.get(type(value), NULLTYPE)
-        if _coerced_type is NULLTYPE or _coerced_type._type_affinity \
-            is self._type_affinity:
-            return self
-        else:
-            return _coerced_type
-
-    def _affinity_base(self):
-        return StandardSQLOperators
 
 class _DateAffinity(object):
     """Mixin date/time specific expression adaptations.
@@ -75,24 +37,21 @@ class _DateAffinity(object):
     def _expression_adaptations(self):
         raise NotImplementedError()
 
-    class Comparator(StandardSQLOperators.Comparator):
+    class Comparator(TypeEngine.Comparator):
         _blank_dict = util.immutabledict()
 
         def _adapt_expression(self, op, other_comparator):
             othertype = other_comparator.type._type_affinity
             return op, \
-                    self.type._expression_adaptations.get(op, self._blank_dict).\
-                    get(othertype, NULLTYPE)
+                    to_instance(self.type._expression_adaptations.get(op, self._blank_dict).\
+                    get(othertype, NULLTYPE))
     comparator_factory = Comparator
-
-
-
 
 class Concatenable(object):
     """A mixin that marks a type as supporting 'concatenation',
     typically strings."""
 
-    class Comparator(StandardSQLOperators.Comparator):
+    class Comparator(TypeEngine.Comparator):
         def _adapt_expression(self, op, other_comparator):
             if op is operators.add and isinstance(other_comparator,
                     (Concatenable.Comparator, NullType.Comparator)):
@@ -103,7 +62,7 @@ class Concatenable(object):
     comparator_factory = Comparator
 
 
-class String(Concatenable, StandardSQLOperators):
+class String(Concatenable, TypeEngine):
     """The base for all string and character types.
 
     In SQL, corresponds to VARCHAR.  Can also take Python unicode objects
@@ -374,7 +333,7 @@ class UnicodeText(Text):
         super(UnicodeText, self).__init__(length=length, **kwargs)
 
 
-class Integer(_DateAffinity, StandardSQLOperators):
+class Integer(_DateAffinity, TypeEngine):
     """A type for ``int`` integers."""
 
     __visit_name__ = 'integer'
@@ -439,7 +398,7 @@ class BigInteger(Integer):
     __visit_name__ = 'big_integer'
 
 
-class Numeric(_DateAffinity, StandardSQLOperators):
+class Numeric(_DateAffinity, TypeEngine):
     """A type for fixed precision numbers.
 
     Typically generates DECIMAL or NUMERIC.  Returns
@@ -653,7 +612,7 @@ class Float(Numeric):
         }
 
 
-class DateTime(_DateAffinity, StandardSQLOperators):
+class DateTime(_DateAffinity, TypeEngine):
     """A type for ``datetime.datetime()`` objects.
 
     Date and time types return objects from the Python ``datetime``
@@ -697,7 +656,7 @@ class DateTime(_DateAffinity, StandardSQLOperators):
         }
 
 
-class Date(_DateAffinity, StandardSQLOperators):
+class Date(_DateAffinity, TypeEngine):
     """A type for ``datetime.date()`` objects."""
 
     __visit_name__ = 'date'
@@ -734,7 +693,7 @@ class Date(_DateAffinity, StandardSQLOperators):
         }
 
 
-class Time(_DateAffinity, StandardSQLOperators):
+class Time(_DateAffinity, TypeEngine):
     """A type for ``datetime.time()`` objects."""
 
     __visit_name__ = 'time'
@@ -763,7 +722,7 @@ class Time(_DateAffinity, StandardSQLOperators):
         }
 
 
-class _Binary(StandardSQLOperators):
+class _Binary(TypeEngine):
     """Define base behavior for binary types."""
 
     def __init__(self, length=None):
@@ -1206,7 +1165,7 @@ class PickleType(TypeDecorator):
             return x == y
 
 
-class Boolean(StandardSQLOperators, SchemaType):
+class Boolean(TypeEngine, SchemaType):
     """A bool datatype.
 
     Boolean typically uses BOOLEAN or SMALLINT on the DDL side, and on
@@ -1517,7 +1476,7 @@ class BOOLEAN(Boolean):
 
     __visit_name__ = 'BOOLEAN'
 
-class NullType(StandardSQLOperators):
+class NullType(TypeEngine):
     """An unknown type.
 
     :class:`.NullType` is used as a default type for those cases where
@@ -1543,7 +1502,7 @@ class NullType(StandardSQLOperators):
 
     _isnull = True
 
-    class Comparator(StandardSQLOperators.Comparator):
+    class Comparator(TypeEngine.Comparator):
         def _adapt_expression(self, op, other_comparator):
             if isinstance(other_comparator, NullType.Comparator) or \
                 not operators.is_commutative(op):
@@ -1585,4 +1544,17 @@ type_api.STRINGTYPE = STRINGTYPE
 type_api.INTEGERTYPE = INTEGERTYPE
 type_api.NULLTYPE = NULLTYPE
 type_api._type_map = _type_map
+
+# this one, there's all kinds of ways to play it, but at the EOD
+# there's just a giant dependency cycle between the typing system and
+# the expression element system, as you might expect.   We can use
+# importlaters or whatnot, but the typing system just necessarily has
+# to have some kind of connection like this.  right now we're injecting the
+# _DefaultColumnComparator implementation into the TypeEngine.Comparator interface.
+# Alternatively TypeEngine.Comparator could have an "impl" injected, though
+# just injecting the base is simpler, error free, and more performant.
+class Comparator(_DefaultColumnComparator):
+    BOOLEANTYPE = BOOLEANTYPE
+
+TypeEngine.Comparator.__bases__ = (Comparator, ) + TypeEngine.Comparator.__bases__
 
