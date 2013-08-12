@@ -20,7 +20,7 @@ from .elements import ClauseElement, ColumnElement,\
   collate, cast, extract, literal_column, between,\
   case, label, literal, outparam, \
   tuple_, type_coerce, ClauseList, _literal_as_text, _clause_element_as_expr,\
-  is_column, _labeled, _only_column_elements, _string_or_unprintable
+  is_column, _labeled, _only_column_elements, _string_or_unprintable, _truncated_label
 
 from .base import ColumnCollection, Generative, Executable, PARSE_AUTOCOMMIT
 
@@ -54,11 +54,11 @@ column = public_factory(ColumnClause)
 over = public_factory(Over)
 
 exists = public_factory(Exists)
-nullsfirst = public_factory(UnaryExpression.nullsfirst)
-nullslast = public_factory(UnaryExpression.nullslast)
-asc = public_factory(UnaryExpression.asc)
-desc = public_factory(UnaryExpression.desc)
-distinct = public_factory(UnaryExpression.distinct)
+nullsfirst = public_factory(UnaryExpression._create_nullsfirst)
+nullslast = public_factory(UnaryExpression._create_nullslast)
+asc = public_factory(UnaryExpression._create_asc)
+desc = public_factory(UnaryExpression._create_desc)
+distinct = public_factory(UnaryExpression._create_distinct)
 
 join = public_factory(Join._create_join)
 outerjoin = public_factory(Join._create_outerjoin)

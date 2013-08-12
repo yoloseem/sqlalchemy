@@ -1766,7 +1766,7 @@ class UnaryExpression(ColumnElement):
         self.negate = negate
 
     @classmethod
-    def nullsfirst(cls, column):
+    def _create_nullsfirst(cls, column):
         """Return a NULLS FIRST ``ORDER BY`` clause element.
 
         e.g.::
@@ -1782,7 +1782,7 @@ class UnaryExpression(ColumnElement):
 
 
     @classmethod
-    def nullslast(cls, column):
+    def _create_nullslast(cls, column):
         """Return a NULLS LAST ``ORDER BY`` clause element.
 
         e.g.::
@@ -1798,7 +1798,7 @@ class UnaryExpression(ColumnElement):
 
 
     @classmethod
-    def desc(cls, column):
+    def _create_desc(cls, column):
         """Return a descending ``ORDER BY`` clause element.
 
         e.g.::
@@ -1813,7 +1813,7 @@ class UnaryExpression(ColumnElement):
         return UnaryExpression(column, modifier=operators.desc_op)
 
     @classmethod
-    def asc(cls, column):
+    def _create_asc(cls, column):
         """Return an ascending ``ORDER BY`` clause element.
 
         e.g.::
@@ -1828,7 +1828,7 @@ class UnaryExpression(ColumnElement):
         return UnaryExpression(column, modifier=operators.asc_op)
 
     @classmethod
-    def distinct(cls, expr):
+    def _create_distinct(cls, expr):
         """Return a ``DISTINCT`` clause.
 
         e.g.::

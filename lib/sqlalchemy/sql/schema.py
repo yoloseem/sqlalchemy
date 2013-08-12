@@ -32,6 +32,7 @@ import re
 import inspect
 from .. import exc, util, event, events, inspection
 from . import visitors
+from . import type_api
 from .base import _bind_or_error, ColumnCollection
 from .elements import ClauseElement, ColumnClause, _truncated_label, \
                         _as_truncated, TextClause, _literal_as_text
@@ -472,7 +473,7 @@ class Table(SchemaItem, TableClause):
         for col in self.primary_key:
             if col.autoincrement and \
                 col.type._type_affinity is not None and \
-                col.type._type_affinity.python_type is int and \
+                issubclass(col.type._type_affinity, type_api.INTEGERTYPE._type_affinity) and \
                 (not col.foreign_keys or col.autoincrement == 'ignore_fk') and \
                 isinstance(col.default, (type(None), Sequence)) and \
                 (col.server_default is None or col.server_default.reflected):

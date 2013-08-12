@@ -324,7 +324,7 @@ class FromClause(Selectable):
         return self._cloned_set.intersection(other._cloned_set)
 
     @util.dependencies("sqlalchemy.sql.util")
-    def replace_selectable(self, sqlutil, adapters, old, alias):
+    def replace_selectable(self, sqlutil, old, alias):
         """replace all occurrences of FromClause 'old' with the given Alias
         object, returning a copy of this :class:`.FromClause`.
 

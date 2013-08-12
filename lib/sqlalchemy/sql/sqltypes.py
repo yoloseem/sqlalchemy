@@ -59,6 +59,9 @@ class StandardSQLOperators(TypeEngine):
         else:
             return _coerced_type
 
+    def _affinity_base(self):
+        return StandardSQLOperators
+
 class _DateAffinity(object):
     """Mixin date/time specific expression adaptations.
 

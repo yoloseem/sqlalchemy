@@ -244,16 +244,20 @@ class TypeEngine(Visitable):
         """
         return Variant(self, {dialect_name: type_})
 
+    def _affinity_base(self):
+        return TypeEngine
+
     @util.memoized_property
     def _type_affinity(self):
         """Return a rudimental 'affinity' value expressing the general class
         of type."""
 
+        affinity_base = self._affinity_base()
         typ = None
         for t in self.__class__.__mro__:
-            if t is TypeEngine or t is UserDefinedType:
+            if t is affinity_base:
                 return typ
-            elif issubclass(t, TypeEngine):
+            elif issubclass(t, affinity_base):
                 typ = t
         else:
             return self.__class__
@@ -422,6 +426,9 @@ class UserDefinedType(TypeEngine):
 
     """
     __visit_name__ = "user_defined"
+
+    def _affinity_base(self):
+        return UserDefinedType
 
     class Comparator(TypeEngine.Comparator):
         def _adapt_expression(self, op, other_comparator):

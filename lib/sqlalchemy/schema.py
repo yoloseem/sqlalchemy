@@ -33,6 +33,20 @@ from .sql.schema import (
 
 from .sql.ddl import (
     DDL,
+    CreateTable,
+    DropTable,
+    CreateSequence,
+    DropSequence,
+    CreateIndex,
+    DropIndex,
+    CreateSchema,
+    DropSchema,
+    _DropView,
+    CreateColumn,
+    AddConstraint,
+    DropConstraint,
+    DDLBase,
+    DDLElement,
     _CreateDropBase,
     _DDLCompiles
 )
