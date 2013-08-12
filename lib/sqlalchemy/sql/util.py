@@ -15,7 +15,8 @@ from itertools import chain
 from collections import deque
 
 from .annotation import _shallow_annotate, _deep_annotate, _deep_deannotate
-from .elements import find_columns, BindParameter, ColumnClause, ColumnElement, Null, UnaryExpression
+from .elements import find_columns, BindParameter, ColumnClause, ColumnElement, \
+            Null, UnaryExpression, literal_column, Label
 from .selectable import ScalarSelect, Join, FromClause, FromGrouping
 from .ddl import sort_tables
 

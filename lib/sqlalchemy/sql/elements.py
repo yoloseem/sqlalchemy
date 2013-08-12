@@ -1729,7 +1729,7 @@ class Extract(ColumnElement):
     __visit_name__ = 'extract'
 
     def __init__(self, field, expr, **kwargs):
-        self.type = type_api.Integer()
+        self.type = type_api.INTEGERTYPE
         self.field = field
         self.expr = _literal_as_binds(expr, None)
 

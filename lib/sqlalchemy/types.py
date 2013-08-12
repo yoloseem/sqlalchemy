@@ -40,6 +40,7 @@ from .sql.sqltypes import (
     Numeric,
     PickleType,
     REAL,
+    SchemaType,
     SMALLINT,
     SmallInteger,
     String,

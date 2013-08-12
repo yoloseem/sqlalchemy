@@ -30,18 +30,18 @@ as components in SQL expressions.
 
 import re
 import inspect
-from .. import exc, util, event, events, inspection
+from .. import exc, util, event, inspection
+from ..events import SchemaEventTarget
 from . import visitors
 from . import type_api
 from .base import _bind_or_error, ColumnCollection
 from .elements import ClauseElement, ColumnClause, _truncated_label, \
-                        _as_truncated, TextClause, _literal_as_text
+                        _as_truncated, TextClause, _literal_as_text,\
+                        ColumnElement, find_columns
 from .selectable import TableClause
 import collections
 import sqlalchemy
 from . import ddl
-url = util.importlater("sqlalchemy.engine", "url")
-
 
 RETAIN_SCHEMA = util.symbol('retain_schema')
 
@@ -63,7 +63,7 @@ def _validate_dialect_kwargs(kwargs, name):
                     "named <dialectname>_<argument>, got '%s'" % k)
 
 
-class SchemaItem(events.SchemaEventTarget, visitors.Visitable):
+class SchemaItem(SchemaEventTarget, visitors.Visitable):
     """Base class for items that define a database schema."""
 
     __visit_name__ = 'schema_item'
@@ -933,7 +933,7 @@ class Column(SchemaItem, ColumnClause):
         if '_proxies' in kwargs:
             self._proxies = kwargs.pop('_proxies')
         # otherwise, add DDL-related events
-        elif self.type._is_schema:
+        elif isinstance(self.type, SchemaEventTarget):
             self.type._set_parent_with_dispatch(self)
 
         if self.default is not None:
@@ -1099,7 +1099,7 @@ class Column(SchemaItem, ColumnClause):
             [c.copy(**kw) for c in self.foreign_keys if not c.constraint]
 
         type_ = self.type
-        if type_._is_schema:
+        if isinstance(type_, SchemaEventTarget):
             type_ = type_.copy(**kw)
 
         c = self._constructor(
@@ -1919,7 +1919,7 @@ class Sequence(DefaultGenerator):
                 % self.__class__.__name__)
 
 
-class FetchedValue(_NotAColumnExpr, events.SchemaEventTarget):
+class FetchedValue(_NotAColumnExpr, SchemaEventTarget):
     """A marker for a transparent database-side default.
 
     Use :class:`.FetchedValue` when the database is configured
@@ -2396,9 +2396,9 @@ class ForeignKeyConstraint(Constraint):
                             bind.dialect.supports_alter
 
             event.listen(table.metadata, "after_create",
-                         AddConstraint(self, on=supports_alter))
+                         ddl.AddConstraint(self, on=supports_alter))
             event.listen(table.metadata, "before_drop",
-                         DropConstraint(self, on=supports_alter))
+                         ddl.DropConstraint(self, on=supports_alter))
 
     def copy(self, schema=None, **kw):
         fkc = ForeignKeyConstraint(
@@ -2745,7 +2745,8 @@ class MetaData(SchemaItem):
         """
         return self._bind
 
-    def _bind_to(self, bind):
+    @util.dependencies("sqlalchemy.engine.url")
+    def _bind_to(self, url, bind):
         """Bind this MetaData to an Engine, Connection, string or URL."""
 
         if isinstance(bind, util.string_types + (url.URL, )):
@@ -2971,7 +2972,8 @@ class ThreadLocalMetaData(MetaData):
 
         return getattr(self.context, '_engine', None)
 
-    def _bind_to(self, bind):
+    @util.dependencies("sqlalchemy.engine.url")
+    def _bind_to(self, url, bind):
         """Bind to a Connectable in the caller's thread."""
 
         if isinstance(bind, util.string_types + (url.URL, )):

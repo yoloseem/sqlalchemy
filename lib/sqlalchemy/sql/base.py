@@ -152,8 +152,6 @@ class Executable(Generative):
             return None
 
 
-
-
 class SchemaVisitor(visitors.ClauseVisitor):
     """Define the visiting for ``SchemaItem`` objects."""
 
@@ -256,13 +254,14 @@ class ColumnCollection(util.OrderedProperties):
 
     __hash__ = None
 
-    def __eq__(self, other):
+    @util.dependencies("sqlalchemy.sql.elements")
+    def __eq__(self, elements, other):
         l = []
         for c in other:
             for local in self:
                 if c.shares_lineage(local):
                     l.append(c == local)
-        return and_(*l)
+        return elements.and_(*l)
 
     def __contains__(self, other):
         if not isinstance(other, util.string_types):
@@ -311,9 +310,6 @@ class ColumnSet(util.ordered_column_set):
 
     def __hash__(self):
         return hash(tuple(x for x in self))
-
-
-
 
 def _bind_or_error(schemaitem, msg=None):
     bind = schemaitem.bind

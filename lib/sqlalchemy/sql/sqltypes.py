@@ -16,7 +16,7 @@ from .type_api import TypeEngine, TypeDecorator, UserDefinedType, \
 from .default_comparator import _DefaultColumnComparator
 from .. import exc, util, processors
 from . import operators
-from .. import events
+from .. import events, event
 from ..util import pickle
 import decimal
 
@@ -880,7 +880,6 @@ class SchemaType(events.SchemaEventTarget):
 
 
     """
-    _is_schema = True
 
     def __init__(self, **kw):
         self.name = kw.pop('name', None)

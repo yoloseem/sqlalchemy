@@ -726,6 +726,16 @@ class importlater(object):
 
     _unresolved = set()
 
+    _by_key = {}
+
+    def __new__(cls, path, addtl):
+        key = path + "." + addtl
+        if key in importlater._by_key:
+            return importlater._by_key[key]
+        else:
+            importlater._by_key[key] = imp = object.__new__(cls)
+            return imp
+
     def __init__(self, path, addtl):
         self._il_path = path
         self._il_addtl = addtl
