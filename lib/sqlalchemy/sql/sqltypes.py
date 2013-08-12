@@ -20,7 +20,6 @@ from .. import events, event
 from ..util import pickle
 import decimal
 
-NoneType = type(None)
 if util.jython:
     import array
 
@@ -1526,7 +1525,7 @@ _type_map = {
     dt.datetime: DateTime(),
     dt.time: Time(),
     dt.timedelta: Interval(),
-    NoneType: NULLTYPE
+    util.NoneType: NULLTYPE
 }
 
 if util.py3k:

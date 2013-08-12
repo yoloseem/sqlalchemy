@@ -13,8 +13,6 @@ from .. import exc, util
 from . import operators
 from .visitors import Visitable
 
-NoneType = type(None)
-
 # these are back-assigned by sqltypes.
 BOOLEANTYPE = None
 INTEGERTYPE = None
