@@ -31,10 +31,11 @@ as components in SQL expressions.
 import re
 import inspect
 from .. import exc, util, event, events, inspection
-from . import visitors, type_api as sqltypes_base
-from . import selectable, elements
+from . import visitors
 from .base import _bind_or_error, ColumnCollection
-
+from .elements import ClauseElement, ColumnClause, _truncated_label, \
+                        _as_truncated, TextClause, _literal_as_text
+from .selectable import TableClause
 import collections
 import sqlalchemy
 from . import ddl
@@ -95,7 +96,7 @@ class SchemaItem(events.SchemaEventTarget, visitors.Visitable):
 
 inspection._self_inspects(SchemaItem)
 
-class Table(SchemaItem, selectable.TableClause):
+class Table(SchemaItem, TableClause):
     """Represent a table in a database.
 
     e.g.::
@@ -573,7 +574,7 @@ class Table(SchemaItem, selectable.TableClause):
     def get_children(self, column_collections=True,
                                 schema_visitor=False, **kw):
         if not schema_visitor:
-            return selectable.TableClause.get_children(
+            return TableClause.get_children(
                 self, column_collections=column_collections, **kw)
         else:
             if column_collections:
@@ -681,7 +682,7 @@ class Table(SchemaItem, selectable.TableClause):
         return table
 
 
-class Column(SchemaItem, elements.ColumnClause):
+class Column(SchemaItem, ColumnClause):
     """Represents a column in a database table."""
 
     __visit_name__ = 'column'
@@ -1062,7 +1063,7 @@ class Column(SchemaItem, elements.ColumnClause):
                     "The 'index' keyword argument on Column is boolean only. "
                     "To create indexes with a specific name, create an "
                     "explicit Index object external to the Table.")
-            Index(elements._truncated_label('ix_%s' % self._label),
+            Index(_truncated_label('ix_%s' % self._label),
                                     self, unique=self.unique)
         elif self.unique:
             if isinstance(self.unique, util.string_types):
@@ -1139,7 +1140,7 @@ class Column(SchemaItem, elements.ColumnClause):
                     "been assigned.")
         try:
             c = self._constructor(
-                elements._as_truncated(name or self.name) if \
+                _as_truncated(name or self.name) if \
                                 name_is_truncatable else (name or self.name),
                 self.type,
                 key=key if key else name if name else self.key,
@@ -1172,7 +1173,7 @@ class Column(SchemaItem, elements.ColumnClause):
                     if x is not None] + \
                 list(self.foreign_keys) + list(self.constraints)
         else:
-            return elements.ColumnClause.get_children(self, **kwargs)
+            return ColumnClause.get_children(self, **kwargs)
 
 
 class ForeignKey(SchemaItem):
@@ -1693,7 +1694,7 @@ class ColumnDefault(DefaultGenerator):
 
     @util.memoized_property
     def is_clause_element(self):
-        return isinstance(self.arg, elements.ClauseElement)
+        return isinstance(self.arg, ClauseElement)
 
     @util.memoized_property
     def is_scalar(self):
@@ -1995,8 +1996,8 @@ class DefaultClause(FetchedValue):
 
     def __init__(self, arg, for_update=False, _reflected=False):
         util.assert_arg_type(arg, (util.string_types[0],
-                                   expression.ClauseElement,
-                                   expression.TextClause), 'arg')
+                                   ClauseElement,
+                                   TextClause), 'arg')
         super(DefaultClause, self).__init__(for_update)
         self.arg = arg
         self.reflected = _reflected
@@ -2103,7 +2104,7 @@ def _to_schema_column(element):
 def _to_schema_column_or_string(element):
     if hasattr(element, '__clause_element__'):
         element = element.__clause_element__()
-    if not isinstance(element, util.string_types + (elements.ColumnElement, )):
+    if not isinstance(element, util.string_types + (ColumnElement, )):
         msg = "Element %r is not a string name or column element"
         raise exc.ArgumentError(msg % element)
     return element
@@ -2206,11 +2207,11 @@ class CheckConstraint(Constraint):
 
         super(CheckConstraint, self).\
                         __init__(name, deferrable, initially, _create_rule)
-        self.sqltext = expression._literal_as_text(sqltext)
+        self.sqltext = _literal_as_text(sqltext)
         if table is not None:
             self._set_parent_with_dispatch(table)
         elif _autoattach:
-            cols = elements.find_columns(self.sqltext)
+            cols = find_columns(self.sqltext)
             tables = set([c.table for c in cols
                         if isinstance(c.table, Table)])
             if len(tables) == 1:
@@ -2503,7 +2504,7 @@ class Index(ColumnCollectionMixin, SchemaItem):
 
         columns = []
         for expr in expressions:
-            if not isinstance(expr, expression.ClauseElement):
+            if not isinstance(expr, ClauseElement):
                 columns.append(expr)
             else:
                 cols = []
@@ -2545,7 +2546,7 @@ class Index(ColumnCollectionMixin, SchemaItem):
         table.indexes.add(self)
 
         self.expressions = [
-            expr if isinstance(expr, expression.ClauseElement)
+            expr if isinstance(expr, ClauseElement)
             else colexpr
             for expr, colexpr in zip(self.expressions, self.columns)
         ]
@@ -2779,7 +2780,7 @@ class MetaData(SchemaItem):
             :meth:`.Inspector.sorted_tables`
 
         """
-        return sort_tables(self.tables.values())
+        return ddl.sort_tables(self.tables.values())
 
     def reflect(self, bind=None, schema=None, views=False, only=None):
         """Load all available table definitions from the database.

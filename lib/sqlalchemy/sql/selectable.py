@@ -10,10 +10,13 @@ SQL tables and derived rowsets.
 """
 
 from .elements import ClauseElement, TextClause, _clone, ClauseList, \
-        _literal_as_text, _interpret_as_column_or_from, ScalarSelect, _expand_cloned,\
-        _select_iterables, and_, _anonymous_label, _clause_element_as_expr
+        _literal_as_text, _interpret_as_column_or_from, _expand_cloned,\
+        _select_iterables, and_, _anonymous_label, _clause_element_as_expr,\
+        Grouping, UnaryExpression, _cloned_intersection, _cloned_difference,\
+        literal_column
 from .base import Immutable, Executable, _generative, \
-            ColumnCollection, ColumnSet, _from_objects
+            ColumnCollection, ColumnSet, _from_objects, Generative
+from . import type_api
 from .. import inspection
 from .. import util
 from .. import exc
@@ -320,14 +323,14 @@ class FromClause(Selectable):
         """
         return self._cloned_set.intersection(other._cloned_set)
 
-    @util.dependencies("sqlalchemy.sql.adapters")
-    def replace_selectable(self, adapters, old, alias):
+    @util.dependencies("sqlalchemy.sql.util")
+    def replace_selectable(self, sqlutil, adapters, old, alias):
         """replace all occurrences of FromClause 'old' with the given Alias
         object, returning a copy of this :class:`.FromClause`.
 
         """
 
-        return adapters.ClauseAdapter(alias).traverse(self)
+        return sqlutil.ClauseAdapter(alias).traverse(self)
 
     def correspond_on_equivalents(self, column, equivalents):
         """Return corresponding_column for the given column, or if None
@@ -623,11 +626,11 @@ class Join(FromClause):
         return FromGrouping(self)
 
     @util.dependencies("sqlalchemy.sql.util")
-    def _populate_column_collection(self, util):
+    def _populate_column_collection(self, sqlutil):
         columns = [c for c in self.left.columns] + \
                         [c for c in self.right.columns]
 
-        self.primary_key.extend(util.reduce_columns(
+        self.primary_key.extend(sqlutil.reduce_columns(
                 (c for c in columns if c.primary_key), self.onclause))
         self._columns.update((col._label, col) for col in columns)
         self.foreign_keys.update(itertools.chain(
@@ -2134,7 +2137,8 @@ class Select(HasPrefixes, SelectBase):
         """
         self.append_column(column)
 
-    def reduce_columns(self, only_synonyms=True):
+    @util.dependencies("sqlalchemy.sql.util")
+    def reduce_columns(self, sqlutil, only_synonyms=True):
         """Return a new :func`.select` construct with redundantly
         named, equivalently-valued columns removed from the columns clause.
 
@@ -2660,10 +2664,107 @@ class Select(HasPrefixes, SelectBase):
     bind = property(bind, _set_bind)
 
 
+class ScalarSelect(Generative, Grouping):
+    _from_objects = []
+
+    def __init__(self, element):
+        self.element = element
+        self.type = element._scalar_type()
+
+    @property
+    def columns(self):
+        raise exc.InvalidRequestError('Scalar Select expression has no '
+                'columns; use this object directly within a '
+                'column-level expression.')
+    c = columns
+
+    @_generative
+    def where(self, crit):
+        """Apply a WHERE clause to the SELECT statement referred to
+        by this :class:`.ScalarSelect`.
+
+        """
+        self.element = self.element.where(crit)
+
+    def self_group(self, **kwargs):
+        return self
+
+
+class Exists(UnaryExpression):
+    """Represent an ``EXISTS`` clause.
+
+    """
+    __visit_name__ = UnaryExpression.__visit_name__
+    _from_objects = []
+
+
+    def __init__(self, *args, **kwargs):
+        """Construct a new :class:`.Exists` against an existing
+        :class:`.Select` object.
+
+        Calling styles are of the following forms::
+
+            # use on an existing select()
+            s = select([table.c.col1]).where(table.c.col2==5)
+            s = exists(s)
+
+            # construct a select() at once
+            exists(['*'], **select_arguments).where(criterion)
+
+            # columns argument is optional, generates "EXISTS (SELECT *)"
+            # by default.
+            exists().where(table.c.col2==5)
+
+        """
+        if args and isinstance(args[0], (SelectBase, ScalarSelect)):
+            s = args[0]
+        else:
+            if not args:
+                args = ([literal_column('*')],)
+            s = Select(*args, **kwargs).as_scalar().self_group()
+
+        UnaryExpression.__init__(self, s, operator=operators.exists,
+                                  type_=type_api.BOOLEANTYPE)
+
+    def select(self, whereclause=None, **params):
+        return Select([self], whereclause, **params)
+
+    def correlate(self, *fromclause):
+        e = self._clone()
+        e.element = self.element.correlate(*fromclause).self_group()
+        return e
+
+    def correlate_except(self, *fromclause):
+        e = self._clone()
+        e.element = self.element.correlate_except(*fromclause).self_group()
+        return e
+
+    def select_from(self, clause):
+        """return a new :class:`.Exists` construct, applying the given
+        expression to the :meth:`.Select.select_from` method of the select
+        statement contained.
+
+        """
+        e = self._clone()
+        e.element = self.element.select_from(clause).self_group()
+        return e
+
+    def where(self, clause):
+        """return a new exists() construct with the given expression added to
+        its WHERE clause, joined to the existing clause via AND, if any.
+
+        """
+        e = self._clone()
+        e.element = self.element.where(clause).self_group()
+        return e
+
+
 class AnnotatedFromClause(Annotated):
     def __init__(self, element, values):
         # force FromClause to generate their internal
         # collections into __dict__
         element.c
         Annotated.__init__(self, element, values)
+
+
 

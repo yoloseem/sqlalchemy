@@ -442,7 +442,7 @@ class Update(ValuesBase):
 
     def __init__(self,
                 table,
-                whereclause,
+                whereclause=None,
                 values=None,
                 inline=False,
                 bind=None,
@@ -612,7 +612,7 @@ class Delete(UpdateBase):
 
     def __init__(self,
             table,
-            whereclause,
+            whereclause=None,
             bind=None,
             returning=None,
             prefixes=None,
@@ -634,8 +634,6 @@ class Delete(UpdateBase):
             :ref:`deletes` - SQL Expression Tutorial
 
         """
-        return Delete(table, whereclause, **kwargs)
-
         self._bind = bind
         self.table = _interpret_as_from(table)
         self._returning = returning

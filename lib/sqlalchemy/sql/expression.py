@@ -13,20 +13,21 @@ from .visitors import Visitable
 from .functions import func, modifier, FunctionElement
 from ..util.langhelpers import public_factory
 from .elements import ClauseElement, ColumnElement,\
-  BindParameter, UnaryExpression, BooleanClauseList, Exists,\
+  BindParameter, UnaryExpression, BooleanClauseList, \
   Label, Cast, Case, ColumnClause, TextClause, Over, Null, \
   True_, False_, BinaryExpression, Tuple, TypeClause, Extract, \
-  Grouping, ScalarSelect, and_, or_, not_, null, false, true, \
+  Grouping, and_, or_, not_, null, false, true, \
   collate, cast, extract, literal_column, between,\
-  case, exists, label, literal, outparam, \
-  tuple_, type_coerce, ClauseList, _literal_as_text
+  case, label, literal, outparam, \
+  tuple_, type_coerce, ClauseList, _literal_as_text, _clause_element_as_expr,\
+  is_column, _labeled, _only_column_elements, _string_or_unprintable
 
-from .base import ColumnCollection, Generative, Executable
+from .base import ColumnCollection, Generative, Executable, PARSE_AUTOCOMMIT
 
 from .selectable import Alias, Join, Select, Selectable, TableClause, \
         CompoundSelect, FromClause, FromGrouping, SelectBase, \
         alias, except_, except_all, intersect, intersect_all, \
-        subquery, union, union_all, HasPrefixes
+        subquery, union, union_all, HasPrefixes, Exists, ScalarSelect
 
 from .dml import Insert, Update, Delete
 
@@ -52,6 +53,7 @@ table = public_factory(TableClause)
 column = public_factory(ColumnClause)
 over = public_factory(Over)
 
+exists = public_factory(Exists)
 nullsfirst = public_factory(UnaryExpression.nullsfirst)
 nullslast = public_factory(UnaryExpression.nullslast)
 asc = public_factory(UnaryExpression.asc)

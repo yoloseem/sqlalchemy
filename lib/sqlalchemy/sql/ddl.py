@@ -10,7 +10,7 @@ to invoke them for a create/drop call.
 """
 
 from .. import util
-from . import elements
+from . import elements, visitors
 from .base import Executable, _generative, SchemaVisitor, _bind_or_error
 from ..util import topological
 from .. import event

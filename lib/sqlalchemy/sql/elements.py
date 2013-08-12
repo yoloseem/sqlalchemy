@@ -3,7 +3,7 @@ from __future__ import unicode_literals
 from .. import util, exc, inspection
 from . import type_api
 from . import operators
-from .visitors import Visitable
+from .visitors import Visitable, cloned_traverse
 from . import visitors
 from .annotation import Annotated
 import itertools
@@ -110,6 +110,12 @@ def _labeled(element):
         return element.label(None)
     else:
         return element
+
+
+def is_column(col):
+    """True if ``col`` is an instance of :class:`.ColumnElement`."""
+
+    return isinstance(col, ColumnElement)
 
 
 def find_columns(clause):
@@ -339,24 +345,6 @@ def case(whens, value=None, else_=None):
     return Case(whens, value=value, else_=else_)
 
 
-def exists(*args, **kwargs):
-    """Return an ``EXISTS`` clause as applied to a :class:`.Select` object.
-
-    Calling styles are of the following forms::
-
-        # use on an existing select()
-        s = select([table.c.col1]).where(table.c.col2==5)
-        s = exists(s)
-
-        # construct a select() at once
-        exists(['*'], **select_arguments).where(criterion)
-
-        # columns argument is optional, generates "EXISTS (SELECT *)"
-        # by default.
-        exists().where(table.c.col2==5)
-
-    """
-    return Exists(*args, **kwargs)
 
 
 def literal(value, type_=None):
@@ -1997,53 +1985,6 @@ class BinaryExpression(ColumnElement):
             return super(BinaryExpression, self)._negate()
 
 
-class Exists(UnaryExpression):
-    __visit_name__ = UnaryExpression.__visit_name__
-    _from_objects = []
-
-    def __init__(self, *args, **kwargs):
-        if args and isinstance(args[0], (SelectBase, ScalarSelect)):
-            s = args[0]
-        else:
-            if not args:
-                args = ([literal_column('*')],)
-            s = select(*args, **kwargs).as_scalar().self_group()
-
-        UnaryExpression.__init__(self, s, operator=operators.exists,
-                                  type_=type_api.BOOLEANTYPE)
-
-    def select(self, whereclause=None, **params):
-        return select([self], whereclause, **params)
-
-    def correlate(self, *fromclause):
-        e = self._clone()
-        e.element = self.element.correlate(*fromclause).self_group()
-        return e
-
-    def correlate_except(self, *fromclause):
-        e = self._clone()
-        e.element = self.element.correlate_except(*fromclause).self_group()
-        return e
-
-    def select_from(self, clause):
-        """return a new :class:`.Exists` construct, applying the given
-        expression to the :meth:`.Select.select_from` method of the select
-        statement contained.
-
-        """
-        e = self._clone()
-        e.element = self.element.select_from(clause).self_group()
-        return e
-
-    def where(self, clause):
-        """return a new exists() construct with the given expression added to
-        its WHERE clause, joined to the existing clause via AND, if any.
-
-        """
-        e = self._clone()
-        e.element = self.element.where(clause).self_group()
-        return e
-
 
 
 class Grouping(ColumnElement):
@@ -2417,32 +2358,6 @@ class ColumnClause(Immutable, ColumnElement):
             selectable._columns[c.key] = c
         return c
 
-
-
-class ScalarSelect(Generative, Grouping):
-    _from_objects = []
-
-    def __init__(self, element):
-        self.element = element
-        self.type = element._scalar_type()
-
-    @property
-    def columns(self):
-        raise exc.InvalidRequestError('Scalar Select expression has no '
-                'columns; use this object directly within a '
-                'column-level expression.')
-    c = columns
-
-    @_generative
-    def where(self, crit):
-        """Apply a WHERE clause to the SELECT statement referred to
-        by this :class:`.ScalarSelect`.
-
-        """
-        self.element = self.element.where(crit)
-
-    def self_group(self, **kwargs):
-        return self
 
 class _IdentifiedClause(Executable, ClauseElement):
 

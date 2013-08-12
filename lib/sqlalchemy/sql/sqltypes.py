@@ -11,7 +11,8 @@
 import datetime as dt
 import codecs
 
-from .type_api import TypeEngine, TypeDecorator, UserDefinedType, to_instance
+from .type_api import TypeEngine, TypeDecorator, UserDefinedType, \
+            to_instance, adapt_type
 from .default_comparator import _DefaultColumnComparator
 from .. import exc, util, processors
 from . import operators

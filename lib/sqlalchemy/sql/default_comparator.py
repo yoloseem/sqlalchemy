@@ -11,10 +11,10 @@ from .. import exc, util
 from . import operators
 from . import type_api
 from .elements import BindParameter, True_, False_, BinaryExpression, \
-        Null, _const_expr, _clause_element_as_expr, ScalarSelect, \
+        Null, _const_expr, _clause_element_as_expr, \
         ClauseList, ColumnElement, TextClause, UnaryExpression, \
         collate, null, _is_literal
-from .selectable import SelectBase, Alias, Selectable
+from .selectable import SelectBase, Alias, Selectable, ScalarSelect
 
 class _DefaultColumnComparator(operators.ColumnOperators):
     """Defines comparison and math operations.

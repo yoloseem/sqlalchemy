@@ -27,11 +27,12 @@ from .sql.schema import (
     ThreadLocalMetaData,
     UniqueConstraint,
     _get_table_key,
-    ColumnCollectionConstraint
+    ColumnCollectionConstraint,
     )
 
 
 from .sql.ddl import (
     DDL,
-    _CreateDropBase
+    _CreateDropBase,
+    _DDLCompiles
 )

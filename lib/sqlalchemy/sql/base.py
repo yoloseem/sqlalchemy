@@ -234,7 +234,7 @@ class ColumnCollection(util.OrderedProperties):
             # pop out memoized proxy_set as this
             # operation may very well be occurring
             # in a _make_proxy operation
-            memoized_property.reset(value, "proxy_set")
+            util.memoized_property.reset(value, "proxy_set")
         self._all_cols.add(value)
         self._data[key] = value
 
@@ -300,13 +300,14 @@ class ColumnSet(util.ordered_column_set):
     def __add__(self, other):
         return list(self) + list(other)
 
-    def __eq__(self, other):
+    @util.dependencies("sqlalchemy.sql.elements")
+    def __eq__(self, elements, other):
         l = []
         for c in other:
             for local in self:
                 if c.shares_lineage(local):
                     l.append(c == local)
-        return and_(*l)
+        return elements.and_(*l)
 
     def __hash__(self):
         return hash(tuple(x for x in self))

@@ -734,7 +734,7 @@ class importlater(object):
     @classmethod
     def resolve_all(cls, path):
         for m in list(importlater._unresolved):
-            if m._il_path.startswith(path):
+            if m._full_path.startswith(path):
                 m._resolve()
 
     @property
