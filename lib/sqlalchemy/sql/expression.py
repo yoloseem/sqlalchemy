@@ -37,6 +37,9 @@ from .elements import ClauseElement, ColumnElement,\
   collate, literal_column, between,\
   literal, outparam, type_coerce, ClauseList
 
+from .elements import SavepointClause, RollbackToSavepointClause, \
+  ReleaseSavepointClause
+
 from .base import ColumnCollection, Generative, Executable, \
           PARSE_AUTOCOMMIT
 
@@ -96,8 +99,6 @@ from .elements import _literal_as_text, _clause_element_as_expr,\
     _column_as_key, _literal_as_binds, _select_iterables, \
     _corresponding_column_or_error
 from .selectable import _interpret_as_from
-
-
 
 
 # old names for compatibility
