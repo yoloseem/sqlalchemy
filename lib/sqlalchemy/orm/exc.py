@@ -6,7 +6,6 @@
 
 """SQLAlchemy ORM exceptions."""
 from .. import exc as sa_exc, util
-orm_util = util.importlater('sqlalchemy.orm', 'util')
 attributes = util.importlater('sqlalchemy.orm', 'attributes')
 
 NO_STATE = (AttributeError, KeyError)
@@ -65,10 +64,11 @@ class DetachedInstanceError(sa_exc.SQLAlchemyError):
 class UnmappedInstanceError(UnmappedError):
     """An mapping operation was requested for an unknown instance."""
 
-    def __init__(self, obj, msg=None):
+    @util.dependencies("sqlalchemy.orm.base")
+    def __init__(self, base, obj, msg=None):
         if not msg:
             try:
-                mapper = orm_util.class_mapper(type(obj))
+                mapper = base.class_mapper(type(obj))
                 name = _safe_cls_name(type(obj))
                 msg = ("Class %r is mapped, but this instance lacks "
                        "instrumentation.  This occurs when the instance"
@@ -117,10 +117,11 @@ class ObjectDeletedError(sa_exc.InvalidRequestError):
     object.
 
     """
-    def __init__(self, state, msg=None):
+    @util.dependencies("sqlalchemy.orm.base")
+    def __init__(self, base, state, msg=None):
         if not msg:
             msg = "Instance '%s' has been deleted, or its "\
-             "row is otherwise not present." % orm_util.state_str(state)
+             "row is otherwise not present." % base.state_str(state)
 
         sa_exc.InvalidRequestError.__init__(self, msg)
 

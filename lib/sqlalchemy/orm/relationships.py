@@ -14,7 +14,6 @@ and `secondaryjoin` aspects of :func:`.relationship`.
 """
 
 from .. import sql, util, exc as sa_exc, schema, log
-dynamic = util.importlater("sqlalchemy.orm", "dynamic")
 
 from .util import CascadeOptions, _orm_annotate, _orm_deannotate
 from . import dependency
@@ -27,10 +26,8 @@ from ..sql.util import (
 from ..sql import operators, expression, visitors
 from .interfaces import MANYTOMANY, MANYTOONE, ONETOMANY, StrategizedProperty, PropComparator
 from ..inspection import inspect
-
-strategies = util.importlater("sqlalchemy.orm", "strategies")
-mapperlib = util.importlater("sqlalchemy.orm", "mapperlib")
-
+from . import properties
+from . import mapper as mapperlib
 
 def remote(expr):
     """Annotate a portion of a primaryjoin expression
@@ -74,6 +71,7 @@ def foreign(expr):
 
 
 @log.class_logger
+@util.langhelpers.dependency_for("sqlalchemy.orm.properties")
 class RelationshipProperty(StrategizedProperty):
     """Describes an object property that holds a single item or list
     of items that correspond to a related database table.
@@ -640,10 +638,9 @@ class RelationshipProperty(StrategizedProperty):
 
         if strategy_class:
             self.strategy_class = strategy_class
-        elif self.lazy == 'dynamic':
-            self.strategy_class = dynamic.DynaLoader
         else:
-            self.strategy_class = strategies.factory(self.lazy)
+            self.strategy_class = self._strategy_lookup(lazy=self.lazy)
+        self._lazy_strategy = self._strategy_lookup(lazy="select")
 
         self._reverse_property = set()
 
@@ -1153,7 +1150,7 @@ class RelationshipProperty(StrategizedProperty):
                                     alias_secondary=True):
         if value is not None:
             value = attributes.instance_state(value)
-        return self._get_strategy(strategies.LazyLoader).lazy_clause(value,
+        return self._get_strategy(self._lazy_strategy).lazy_clause(value,
                 reverse_direction=not value_is_parent,
                 alias_secondary=alias_secondary,
                 adapt_source=adapt_source)
@@ -1606,7 +1603,7 @@ class RelationshipProperty(StrategizedProperty):
         """memoize the 'use_get' attribute of this RelationshipLoader's
         lazyloader."""
 
-        strategy = self._get_strategy(strategies.LazyLoader)
+        strategy = self._get_strategy(self._lazy_strategy)
         return strategy.use_get
 
     @util.memoized_property

@@ -39,10 +39,8 @@ from .util import (
      with_parent,
      with_polymorphic,
      )
-from .properties import (
-     ColumnProperty,
-     RelationshipProperty,
-     )
+from .properties import ColumnProperty
+from .relationships import RelationshipProperty
 from .descriptor_props import (
      ComparableProperty,
      CompositeProperty,
@@ -67,6 +65,7 @@ from .query import AliasOption, Query
 from .. import util as sa_util
 from ..util.langhelpers import public_factory
 from . import interfaces
+from . import dynamic
 
 __all__ = (
     'EXT_CONTINUE',

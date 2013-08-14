@@ -132,7 +132,10 @@ def public_factory(target, location):
     code = 'lambda %(args)s: cls(%(apply_kw)s)' % metadata
     decorated = eval(code, {'cls': callable_, 'symbol': symbol})
     decorated.__doc__ = fn.__doc__
-    fn.__func__.__doc__ = doc
+    if compat.py2k or hasattr(fn, '__func__'):
+        fn.__func__.__doc__ = doc
+    else:
+        fn.__doc__ = doc
     return decorated
 
 
@@ -785,6 +788,17 @@ class importlater(object):
                     )
         self.__dict__[key] = attr
         return attr
+
+def dependency_for(modulename):
+    def decorate(obj):
+        # TODO: would be nice to improve on this import silliness,
+        # unfortunately importlib doesn't work that great either
+        tokens = modulename.split(".")
+        mod = compat.import_(".".join(tokens[0:-1]), globals(), locals(), tokens[-1])
+        mod = getattr(mod, tokens[-1])
+        setattr(mod, obj.__name__, obj)
+        return obj
+    return decorate
 
 def dependencies(*deps):
     """Apply imported dependencies as arguments to a function.

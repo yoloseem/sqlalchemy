@@ -12,7 +12,7 @@ as actively in the load/persist ORM loop.
 
 from .interfaces import MapperProperty, PropComparator
 from .util import _none_set
-from . import attributes, strategies
+from . import attributes
 from .. import util, sql, exc as sa_exc, event, schema
 from ..sql import expression
 from . import properties
@@ -75,6 +75,7 @@ class DescriptorProperty(MapperProperty):
         mapper.class_manager.instrument_attribute(self.key, proxy_attr)
 
 
+@util.langhelpers.dependency_for("sqlalchemy.orm.properties")
 class CompositeProperty(DescriptorProperty):
     """Defines a "composite" mapped attribute, representing a collection
     of columns as one attribute.
@@ -257,7 +258,8 @@ class CompositeProperty(DescriptorProperty):
             prop.active_history = self.active_history
             if self.deferred:
                 prop.deferred = self.deferred
-                prop.strategy_class = strategies.DeferredColumnLoader
+                prop.strategy_class = prop._strategy_lookup(
+                                        deferred=True, instrument=True)
             prop.group = self.group
 
     def _setup_event_handlers(self):
@@ -408,6 +410,7 @@ class CompositeProperty(DescriptorProperty):
         return str(self.parent.class_.__name__) + "." + self.key
 
 
+@util.langhelpers.dependency_for("sqlalchemy.orm.properties")
 class ConcreteInheritedProperty(DescriptorProperty):
     """A 'do nothing' :class:`.MapperProperty` that disables
     an attribute on a concrete subclass that is only present
@@ -456,6 +459,7 @@ class ConcreteInheritedProperty(DescriptorProperty):
         self.descriptor = NoninheritedConcreteProp()
 
 
+@util.langhelpers.dependency_for("sqlalchemy.orm.properties")
 class SynonymProperty(DescriptorProperty):
 
     def __init__(self, name, map_column=None,
@@ -551,6 +555,7 @@ class SynonymProperty(DescriptorProperty):
         self.parent = parent
 
 
+@util.langhelpers.dependency_for("sqlalchemy.orm.properties")
 class ComparableProperty(DescriptorProperty):
     """Instruments a Python property for use in query expressions."""
 
@@ -624,9 +629,4 @@ class ComparableProperty(DescriptorProperty):
     def _comparator_factory(self, mapper):
         return self.comparator_factory(self, mapper)
 
-
-properties.CompositeProperty = CompositeProperty
-properties.SynonymProperty = SynonymProperty
-properties.ConcreteInheritedProperty = ConcreteInheritedProperty
-properties.ComparableProperty = ComparableProperty
 

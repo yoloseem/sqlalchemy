@@ -10,19 +10,18 @@ This is a private module which defines the behavior of invidual ORM-
 mapped attributes.
 
 """
+from __future__ import absolute_import
 
 from .. import util, log
 from ..sql import expression
 from . import attributes
 from .util import _orm_full_deannotate
 
-strategies = util.importlater("sqlalchemy.orm", "strategies")
 from .interfaces import PropComparator, StrategizedProperty
-
-from .relationships import RelationshipProperty
 
 __all__ = ['ColumnProperty', 'CompositeProperty', 'SynonymProperty',
            'ComparableProperty', 'RelationshipProperty']
+
 
 @log.class_logger
 class ColumnProperty(StrategizedProperty):
@@ -141,12 +140,10 @@ class ColumnProperty(StrategizedProperty):
                     ', '.join(sorted(kwargs.keys()))))
 
         util.set_creation_order(self)
-        if not self.instrument:
-            self.strategy_class = strategies.UninstrumentedColumnLoader
-        elif self.deferred:
-            self.strategy_class = strategies.DeferredColumnLoader
-        else:
-            self.strategy_class = strategies.ColumnLoader
+
+        self.strategy_class = self._strategy_lookup(
+                                    deferred=self.deferred,
+                                    instrument=self.instrument)
 
     @property
     def expression(self):
@@ -253,9 +250,6 @@ class ColumnProperty(StrategizedProperty):
         def reverse_operate(self, op, other, **kwargs):
             col = self.__clause_element__()
             return op(col._bind_param(op, other), col, **kwargs)
-
-    # TODO: legacy..do we need this ? (0.5)
-    ColumnComparator = Comparator
 
     def __str__(self):
         return str(self.parent.class_.__name__) + "." + self.key

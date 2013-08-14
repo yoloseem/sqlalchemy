@@ -25,6 +25,7 @@ from .base import _is_aliased_class, _class_to_mapper
 from .base import ONETOMANY, MANYTOONE, MANYTOMANY, EXT_CONTINUE, EXT_STOP, NOT_EXTENSION
 from .base import _InspectionAttr, _MappedAttribute
 from .path_registry import PathRegistry
+import collections
 
 #from . import util as orm_util
 orm_util = util.importlater("sqlalchemy.orm", "util")
@@ -458,6 +459,30 @@ class StrategizedProperty(MapperProperty):
         if self.is_primary() and \
             not mapper.class_manager._attr_has_impl(self.key):
             self.strategy.init_class_attribute(mapper)
+
+
+    _strategies = collections.defaultdict(dict)
+
+    @classmethod
+    def _strategy_for(cls, *keys):
+        def decorate(dec_cls):
+            for key in keys:
+                key = tuple(sorted(key.items()))
+                cls._strategies[cls][key] = dec_cls
+            return dec_cls
+        return decorate
+
+    @classmethod
+    def _strategy_lookup(cls, **kw):
+        key = tuple(sorted(kw.items()))
+        for prop_cls in cls.__mro__:
+            if prop_cls in cls._strategies:
+                strategies = cls._strategies[prop_cls]
+                try:
+                    return strategies[key]
+                except KeyError:
+                    pass
+        raise Exception("can't locate strategy for %s %s" % (cls, kw))
 
 
 class MapperOption(object):
