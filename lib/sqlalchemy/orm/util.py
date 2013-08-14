@@ -7,22 +7,20 @@
 
 from .. import sql, util, event, exc as sa_exc, inspection
 from ..sql import expression, util as sql_util, operators
-from .interfaces import PropComparator, MapperProperty, _InspectionAttr
-from itertools import chain
-from . import attributes, exc
+from .interfaces import PropComparator, MapperProperty
+from . import attributes
 import re
 
 from .base import instance_str, state_str, state_class_str, attribute_str, \
-        state_attribute_str
-from .base import _class_to_mapper, _mapper_or_none, _is_mapped_class, \
-        _is_aliased_class, _entity_descriptor, _state_mapper, class_mapper
+        state_attribute_str, object_mapper, object_state, _none_set
+#from .base import _class_to_mapper, _mapper_or_none, _is_mapped_class, \
+#        _is_aliased_class, _entity_descriptor, _state_mapper,
+from .base import class_mapper, _class_to_mapper
+from .base import _InspectionAttr
 
 all_cascades = frozenset(("delete", "delete-orphan", "all", "merge",
                           "expunge", "save-update", "refresh-expire",
                           "none"))
-
-
-_none_set = frozenset([None])
 
 
 class CascadeOptions(frozenset):
@@ -850,81 +848,6 @@ def with_parent(instance, prop):
                         instance,
                         value_is_parent=True)
 
-
-def _attr_as_key(attr):
-    if hasattr(attr, 'key'):
-        return attr.key
-    else:
-        return expression._column_as_key(attr)
-
-
-
-@inspection._inspects(object)
-def _inspect_mapped_object(instance):
-    try:
-        return attributes.instance_state(instance)
-        # TODO: whats the py-2/3 syntax to catch two
-        # different kinds of exceptions at once ?
-    except exc.UnmappedClassError:
-        return None
-    except exc.NO_STATE:
-        return None
-
-
-
-
-def object_mapper(instance):
-    """Given an object, return the primary Mapper associated with the object
-    instance.
-
-    Raises :class:`sqlalchemy.orm.exc.UnmappedInstanceError`
-    if no mapping is configured.
-
-    This function is available via the inspection system as::
-
-        inspect(instance).mapper
-
-    Using the inspection system will raise
-    :class:`sqlalchemy.exc.NoInspectionAvailable` if the instance is
-    not part of a mapping.
-
-    """
-    return object_state(instance).mapper
-
-
-def object_state(instance):
-    """Given an object, return the :class:`.InstanceState`
-    associated with the object.
-
-    Raises :class:`sqlalchemy.orm.exc.UnmappedInstanceError`
-    if no mapping is configured.
-
-    Equivalent functionality is available via the :func:`.inspect`
-    function as::
-
-        inspect(instance)
-
-    Using the inspection system will raise
-    :class:`sqlalchemy.exc.NoInspectionAvailable` if the instance is
-    not part of a mapping.
-
-    """
-    state = _inspect_mapped_object(instance)
-    if state is None:
-        raise exc.UnmappedInstanceError(instance)
-    else:
-        return state
-
-
-
-
-
-def _orm_columns(entity):
-    insp = inspection.inspect(entity, False)
-    if hasattr(insp, 'selectable'):
-        return [c for c in insp.selectable.c]
-    else:
-        return [entity]
 
 
 def has_identity(object):

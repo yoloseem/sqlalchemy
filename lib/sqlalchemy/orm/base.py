@@ -8,6 +8,7 @@
 """
 
 from .. import util, inspection, exc as sa_exc
+from ..sql import expression
 from . import exc
 import operator
 
@@ -109,6 +110,25 @@ DEFAULT_MANAGER_ATTR = '_sa_class_manager'
 DEFAULT_STATE_ATTR = '_sa_instance_state'
 _INSTRUMENTOR = ('mapper', 'instrumentor')
 
+EXT_CONTINUE = util.symbol('EXT_CONTINUE')
+EXT_STOP = util.symbol('EXT_STOP')
+
+ONETOMANY = util.symbol('ONETOMANY')
+MANYTOONE = util.symbol('MANYTOONE')
+MANYTOMANY = util.symbol('MANYTOMANY')
+
+NOT_EXTENSION = util.symbol('NOT_EXTENSION')
+"""Symbol indicating an :class:`_InspectionAttr` that's
+   not part of sqlalchemy.ext.
+
+   Is assigned to the :attr:`._InspectionAttr.extension_type`
+   attibute.
+
+"""
+
+_none_set = frozenset([None])
+
+
 # these can be replaced by sqlalchemy.ext.instrumentation
 # if augmented class instrumentation is enabled.
 def manager_of_class(cls):
@@ -147,6 +167,62 @@ def attribute_str(instance, attribute):
 def state_attribute_str(state, attribute):
     return state_str(state) + "." + attribute
 
+def object_mapper(instance):
+    """Given an object, return the primary Mapper associated with the object
+    instance.
+
+    Raises :class:`sqlalchemy.orm.exc.UnmappedInstanceError`
+    if no mapping is configured.
+
+    This function is available via the inspection system as::
+
+        inspect(instance).mapper
+
+    Using the inspection system will raise
+    :class:`sqlalchemy.exc.NoInspectionAvailable` if the instance is
+    not part of a mapping.
+
+    """
+    return object_state(instance).mapper
+
+
+def object_state(instance):
+    """Given an object, return the :class:`.InstanceState`
+    associated with the object.
+
+    Raises :class:`sqlalchemy.orm.exc.UnmappedInstanceError`
+    if no mapping is configured.
+
+    Equivalent functionality is available via the :func:`.inspect`
+    function as::
+
+        inspect(instance)
+
+    Using the inspection system will raise
+    :class:`sqlalchemy.exc.NoInspectionAvailable` if the instance is
+    not part of a mapping.
+
+    """
+    state = _inspect_mapped_object(instance)
+    if state is None:
+        raise exc.UnmappedInstanceError(instance)
+    else:
+        return state
+
+
+@inspection._inspects(object)
+def _inspect_mapped_object(instance):
+    try:
+        return instance_state(instance)
+        # TODO: whats the py-2/3 syntax to catch two
+        # different kinds of exceptions at once ?
+    except exc.UnmappedClassError:
+        return None
+    except exc.NO_STATE:
+        return None
+
+
+
 def _class_to_mapper(class_or_mapper):
     insp = inspection.inspect(class_or_mapper, False)
     if insp is not None:
@@ -177,6 +253,22 @@ def _is_mapped_class(entity):
             insp.is_mapper
             or insp.is_aliased_class
         )
+
+def _attr_as_key(attr):
+    if hasattr(attr, 'key'):
+        return attr.key
+    else:
+        return expression._column_as_key(attr)
+
+
+
+def _orm_columns(entity):
+    insp = inspection.inspect(entity, False)
+    if hasattr(insp, 'selectable'):
+        return [c for c in insp.selectable.c]
+    else:
+        return [entity]
+
 
 
 def _is_aliased_class(entity):
@@ -254,3 +346,74 @@ def class_mapper(class_, configure=True):
     else:
         return mapper
 
+
+class _InspectionAttr(object):
+    """A base class applied to all ORM objects that can be returned
+    by the :func:`.inspect` function.
+
+    The attributes defined here allow the usage of simple boolean
+    checks to test basic facts about the object returned.
+
+    While the boolean checks here are basically the same as using
+    the Python isinstance() function, the flags here can be used without
+    the need to import all of these classes, and also such that
+    the SQLAlchemy class system can change while leaving the flags
+    here intact for forwards-compatibility.
+
+    """
+
+    is_selectable = False
+    """Return True if this object is an instance of :class:`.Selectable`."""
+
+    is_aliased_class = False
+    """True if this object is an instance of :class:`.AliasedClass`."""
+
+    is_instance = False
+    """True if this object is an instance of :class:`.InstanceState`."""
+
+    is_mapper = False
+    """True if this object is an instance of :class:`.Mapper`."""
+
+    is_property = False
+    """True if this object is an instance of :class:`.MapperProperty`."""
+
+    is_attribute = False
+    """True if this object is a Python :term:`descriptor`.
+
+    This can refer to one of many types.   Usually a
+    :class:`.QueryableAttribute` which handles attributes events on behalf
+    of a :class:`.MapperProperty`.   But can also be an extension type
+    such as :class:`.AssociationProxy` or :class:`.hybrid_property`.
+    The :attr:`._InspectionAttr.extension_type` will refer to a constant
+    identifying the specific subtype.
+
+    .. seealso::
+
+        :attr:`.Mapper.all_orm_descriptors`
+
+    """
+
+    is_clause_element = False
+    """True if this object is an instance of :class:`.ClauseElement`."""
+
+    extension_type = NOT_EXTENSION
+    """The extension type, if any.
+    Defaults to :data:`.interfaces.NOT_EXTENSION`
+
+    .. versionadded:: 0.8.0
+
+    .. seealso::
+
+        :data:`.HYBRID_METHOD`
+
+        :data:`.HYBRID_PROPERTY`
+
+        :data:`.ASSOCIATION_PROXY`
+
+    """
+
+class _MappedAttribute(object):
+    """Mixin for attributes which should be replaced by mapper-assigned
+    attributes.
+
+    """

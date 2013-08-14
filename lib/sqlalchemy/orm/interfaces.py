@@ -22,10 +22,12 @@ from .. import exc as sa_exc, util, inspect
 from ..sql import operators
 from collections import deque
 from .base import _is_aliased_class, _class_to_mapper
+from .base import ONETOMANY, MANYTOONE, MANYTOMANY, EXT_CONTINUE, EXT_STOP, NOT_EXTENSION
+from .base import _InspectionAttr, _MappedAttribute
 from .path_registry import PathRegistry
 
+#from . import util as orm_util
 orm_util = util.importlater("sqlalchemy.orm", "util")
-collections = util.importlater('sqlalchemy.orm', 'collections')
 
 __all__ = (
     'AttributeExtension',
@@ -44,97 +46,11 @@ __all__ = (
     'StrategizedProperty',
     )
 
-EXT_CONTINUE = util.symbol('EXT_CONTINUE')
-EXT_STOP = util.symbol('EXT_STOP')
-
-ONETOMANY = util.symbol('ONETOMANY')
-MANYTOONE = util.symbol('MANYTOONE')
-MANYTOMANY = util.symbol('MANYTOMANY')
 
 from .deprecated_interfaces import AttributeExtension, \
     SessionExtension, \
     MapperExtension
 
-
-NOT_EXTENSION = util.symbol('NOT_EXTENSION')
-"""Symbol indicating an :class:`_InspectionAttr` that's
-   not part of sqlalchemy.ext.
-
-   Is assigned to the :attr:`._InspectionAttr.extension_type`
-   attibute.
-
-"""
-
-class _InspectionAttr(object):
-    """A base class applied to all ORM objects that can be returned
-    by the :func:`.inspect` function.
-
-    The attributes defined here allow the usage of simple boolean
-    checks to test basic facts about the object returned.
-
-    While the boolean checks here are basically the same as using
-    the Python isinstance() function, the flags here can be used without
-    the need to import all of these classes, and also such that
-    the SQLAlchemy class system can change while leaving the flags
-    here intact for forwards-compatibility.
-
-    """
-
-    is_selectable = False
-    """Return True if this object is an instance of :class:`.Selectable`."""
-
-    is_aliased_class = False
-    """True if this object is an instance of :class:`.AliasedClass`."""
-
-    is_instance = False
-    """True if this object is an instance of :class:`.InstanceState`."""
-
-    is_mapper = False
-    """True if this object is an instance of :class:`.Mapper`."""
-
-    is_property = False
-    """True if this object is an instance of :class:`.MapperProperty`."""
-
-    is_attribute = False
-    """True if this object is a Python :term:`descriptor`.
-
-    This can refer to one of many types.   Usually a
-    :class:`.QueryableAttribute` which handles attributes events on behalf
-    of a :class:`.MapperProperty`.   But can also be an extension type
-    such as :class:`.AssociationProxy` or :class:`.hybrid_property`.
-    The :attr:`._InspectionAttr.extension_type` will refer to a constant
-    identifying the specific subtype.
-
-    .. seealso::
-
-        :attr:`.Mapper.all_orm_descriptors`
-
-    """
-
-    is_clause_element = False
-    """True if this object is an instance of :class:`.ClauseElement`."""
-
-    extension_type = NOT_EXTENSION
-    """The extension type, if any.
-    Defaults to :data:`.interfaces.NOT_EXTENSION`
-
-    .. versionadded:: 0.8.0
-
-    .. seealso::
-
-        :data:`.HYBRID_METHOD`
-
-        :data:`.HYBRID_PROPERTY`
-
-        :data:`.ASSOCIATION_PROXY`
-
-    """
-
-class _MappedAttribute(object):
-    """Mixin for attributes which should be replaced by mapper-assigned
-    attributes.
-
-    """
 
 
 class MapperProperty(_MappedAttribute, _InspectionAttr):

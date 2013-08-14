@@ -59,7 +59,7 @@ class MapperTest(_fixtures.FixtureTest, AssertsCompiledSQL):
         addresses = self.tables.addresses
         Address = self.classes.Address
 
-        from sqlalchemy.orm.util import _is_mapped_class, _is_aliased_class
+        from sqlalchemy.orm.base import _is_mapped_class, _is_aliased_class
 
         class Foo(object):
             x = "something"
@@ -96,7 +96,7 @@ class MapperTest(_fixtures.FixtureTest, AssertsCompiledSQL):
     def test_entity_descriptor(self):
         users = self.tables.users
 
-        from sqlalchemy.orm.util import _entity_descriptor
+        from sqlalchemy.orm.base import _entity_descriptor
 
         class Foo(object):
             x = "something"
@@ -2242,18 +2242,18 @@ class ComparatorFactoryTest(_fixtures.FixtureTest, AssertsCompiledSQL):
                                 self.tables.addresses,
                                 self.classes.User)
 
-        from sqlalchemy.orm.properties import PropertyLoader
+        from sqlalchemy.orm.properties import RelationshipProperty
 
         # NOTE: this API changed in 0.8, previously __clause_element__()
         # gave the parent selecatable, now it gives the
         # primaryjoin/secondaryjoin
-        class MyFactory(PropertyLoader.Comparator):
+        class MyFactory(RelationshipProperty.Comparator):
             __hash__ = None
             def __eq__(self, other):
                 return func.foobar(self._source_selectable().c.user_id) == \
                     func.foobar(other.id)
 
-        class MyFactory2(PropertyLoader.Comparator):
+        class MyFactory2(RelationshipProperty.Comparator):
             __hash__ = None
             def __eq__(self, other):
                 return func.foobar(self._source_selectable().c.id) == \

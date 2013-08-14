@@ -8,9 +8,10 @@
 
 """
 from .. import event, exc, util
-orm = util.importlater("sqlalchemy", "orm")
+from .base import _mapper_or_none
 import inspect
 import weakref
+from . import interfaces
 
 
 class InstrumentationEvents(event.Events):
@@ -52,7 +53,8 @@ class InstrumentationEvents(event.Events):
             return None
 
     @classmethod
-    def _listen(cls, event_key, propagate=True):
+    @util.dependencies("sqlalchemy.orm.instrumentation")
+    def _listen(cls, instrumentation, event_key, propagate=True):
         target, identifier, fn = \
             event_key.dispatch_target, event_key.identifier, event_key.fn
 
@@ -65,20 +67,21 @@ class InstrumentationEvents(event.Events):
 
         def remove(ref):
             key = event.registry._EventKey(None, identifier, listen,
-                        orm.instrumentation._instrumentation_factory)
-            getattr(orm.instrumentation._instrumentation_factory.dispatch,
+                        instrumentation._instrumentation_factory)
+            getattr(instrumentation._instrumentation_factory.dispatch,
                         identifier).remove(key)
 
         target = weakref.ref(target.class_, remove)
 
         event_key.\
-            with_dispatch_target(orm.instrumentation._instrumentation_factory).\
+            with_dispatch_target(instrumentation._instrumentation_factory).\
             with_wrapper(listen).base_listen()
 
     @classmethod
-    def _clear(cls):
+    @util.dependencies("sqlalchemy.orm.instrumentation")
+    def _clear(cls, instrumentation):
         super(InstrumentationEvents, cls)._clear()
-        orm.instrumentation._instrumentation_factory.dispatch._clear()
+        instrumentation._instrumentation_factory.dispatch._clear()
 
     def class_instrument(self, cls):
         """Called after the given class is instrumented.
@@ -155,18 +158,22 @@ class InstanceEvents(event.Events):
     _target_class_doc = "SomeClass"
 
     @classmethod
-    def _accept_with(cls, target):
+    @util.dependencies(
+            "sqlalchemy.orm.mapperlib",
+            "sqlalchemy.orm.instrumentation",
+            "sqlalchemy.orm")
+    def _accept_with(cls, mapperlib, instrumentation, orm, target):
         if isinstance(target, orm.instrumentation.ClassManager):
             return target
-        elif isinstance(target, orm.Mapper):
+        elif isinstance(target, mapperlib.Mapper):
             return target.class_manager
         elif target is orm.mapper:
-            return orm.instrumentation.ClassManager
+            return instrumentation.ClassManager
         elif isinstance(target, type):
             if issubclass(target, orm.Mapper):
-                return orm.instrumentation.ClassManager
+                return instrumentation.ClassManager
             else:
-                manager = orm.instrumentation.manager_of_class(target)
+                manager = instrumentation.manager_of_class(target)
                 if manager:
                     return manager
                 else:
@@ -383,8 +390,9 @@ class _EventsHold(event.RefCollection):
 class _InstanceEventsHold(_EventsHold):
     all_holds = weakref.WeakKeyDictionary()
 
-    def resolve(self, class_):
-        return orm.instrumentation.manager_of_class(class_)
+    @util.dependencies("sqlalchemy.orm.instrumentation")
+    def resolve(self, instrumentation, class_):
+        return instrumentation.manager_of_class(class_)
 
     class HoldInstanceEvents(_EventsHold.HoldEvents, InstanceEvents):
         pass
@@ -466,14 +474,15 @@ class MapperEvents(event.Events):
     _target_class_doc = "SomeClass"
 
     @classmethod
-    def _accept_with(cls, target):
+    @util.dependencies("sqlalchemy.orm")
+    def _accept_with(cls, orm, target):
         if target is orm.mapper:
             return orm.Mapper
         elif isinstance(target, type):
             if issubclass(target, orm.Mapper):
                 return target
             else:
-                mapper = orm.util._mapper_or_none(target)
+                mapper = _mapper_or_none(target)
                 if mapper is not None:
                     return mapper
                 else:
@@ -482,7 +491,8 @@ class MapperEvents(event.Events):
             return target
 
     @classmethod
-    def _listen(cls, event_key,
+    @util.dependencies("sqlalchemy.orm")
+    def _listen(cls, orm, event_key,
                             raw=False, retval=False, propagate=False):
         target, identifier, fn = \
             event_key.dispatch_target, event_key.identifier, event_key.fn
@@ -1071,7 +1081,7 @@ class _MapperEventsHold(_EventsHold):
     all_holds = weakref.WeakKeyDictionary()
 
     def resolve(self, class_):
-        return orm.util._mapper_or_none(class_)
+        return _mapper_or_none(class_)
 
     class HoldMapperEvents(_EventsHold.HoldEvents, MapperEvents):
         pass
@@ -1107,7 +1117,8 @@ class SessionEvents(event.Events):
     _target_class_doc = "SomeSessionOrFactory"
 
     @classmethod
-    def _accept_with(cls, target):
+    @util.dependencies("sqlalchemy.orm")
+    def _accept_with(cls, orm, target):
         if isinstance(target, orm.scoped_session):
 
             target = target.session_factory
@@ -1515,13 +1526,14 @@ class AttributeEvents(event.Events):
     @classmethod
     def _accept_with(cls, target):
         # TODO: coverage
-        if isinstance(target, orm.interfaces.MapperProperty):
+        if isinstance(target, interfaces.MapperProperty):
             return getattr(target.parent.class_, target.key)
         else:
             return target
 
     @classmethod
-    def _listen(cls, event_key, active_history=False,
+    @util.dependencies("sqlalchemy.orm.instrumentation")
+    def _listen(cls, instrumentation, event_key, active_history=False,
                                         raw=False, retval=False,
                                         propagate=False):
 
@@ -1548,7 +1560,7 @@ class AttributeEvents(event.Events):
         event_key.base_listen(propagate=propagate)
 
         if propagate:
-            manager = orm.instrumentation.manager_of_class(target.class_)
+            manager = instrumentation.manager_of_class(target.class_)
 
             for mgr in manager.subclass_managers(True):
                 event_key.with_dispatch_target(mgr[target.key]).base_listen(propagate=True)

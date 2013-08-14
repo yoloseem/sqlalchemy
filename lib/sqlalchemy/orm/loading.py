@@ -21,7 +21,6 @@ from .util import _none_set, state_str
 from .. import exc as sa_exc
 
 querylib = util.importlater("sqlalchemy.orm", "query")
-sessionlib = util.importlater("sqlalchemy.orm", "session")
 
 _new_runid = util.counter()
 
@@ -547,7 +546,7 @@ def load_scalar_attributes(mapper, state, attribute_names):
     """initiate a column-based attribute refresh operation."""
 
     #assert mapper is _state_mapper(state)
-    session = sessionlib._state_session(state)
+    session = state.session
     if not session:
         raise orm_exc.DetachedInstanceError(
                     "Instance %s is not bound to a Session; "
