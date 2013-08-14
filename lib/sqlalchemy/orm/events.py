@@ -1536,12 +1536,10 @@ class AttributeEvents(event.Events):
     _target_class_doc = "SomeClass.some_attribute"
     _dispatch_target = QueryableAttribute
 
-
-    @classmethod
+    @staticmethod
     def _set_dispatch(cls, dispatch_cls):
-        super(cls, cls)._set_dispatch(dispatch_cls)
+        event.Events._set_dispatch(cls, dispatch_cls)
         dispatch_cls._active_history = False
-
 
     @classmethod
     def _accept_with(cls, target):

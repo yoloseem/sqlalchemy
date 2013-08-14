@@ -125,7 +125,7 @@ def _create_dispatcher_class(cls, classname, bases, dict_):
     dispatch_base = getattr(cls, 'dispatch', _Dispatch)
     dispatch_cls = type("%sDispatch" % classname,
                                         (dispatch_base, ), {})
-    cls._set_dispatch(dispatch_cls)
+    cls._set_dispatch(cls, dispatch_cls)
 
     for k in dict_:
         if _is_event_name(k):
@@ -146,11 +146,13 @@ def _remove_dispatcher(cls):
 class Events(util.with_metaclass(_EventMeta, object)):
     """Define event listening functions for a particular target type."""
 
-    @classmethod
+    @staticmethod
     def _set_dispatch(cls, dispatch_cls):
         # this allows an Events subclass to define additional utility
         # methods made available to the target via
         # "self.dispatch._events.<utilitymethod>"
+        # @staticemethod to allow easy "super" calls while in a metaclass
+        # constructor.
         cls.dispatch = dispatch_cls
         dispatch_cls._events = cls
 
