@@ -76,5 +76,5 @@ def __go():
     _prepare_annotations(ClauseList, Annotated)
 
     from .. import util as _sa_util
-    _sa_util.importlater.resolve_all("sqlalchemy.sql")
+    _sa_util.dependencies.resolve_all("sqlalchemy.sql")
 __go()
