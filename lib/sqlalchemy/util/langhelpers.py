@@ -107,7 +107,7 @@ def decorator(target):
     return update_wrapper(decorate, target)
 
 
-def public_factory(target):
+def public_factory(target, location):
     """Produce a wrapping function for the given cls or classmethod.
 
     Rationale here is so that the __init__ method of the
@@ -117,18 +117,23 @@ def public_factory(target):
     if isinstance(target, type):
         fn = target.__init__
         callable_ = target
+        doc = "Construct a new :class:`.%s` object. \n\n"\
+        "This constructor is mirrored as a public API function; see :func:`~%s` "\
+        "for a full usage and argument description." % (
+                    target.__name__, location, )
     else:
         fn = callable_ = target
+        doc = "This function is mirrored; see :func:`~%s` "\
+                "for a description of arguments." % location
+
     spec = compat.inspect_getfullargspec(fn)
     del spec[0][0]
-    #import pdb
-    #pdb.set_trace()
     metadata = format_argspec_plus(spec, grouped=False)
     code = 'lambda %(args)s: cls(%(apply_kw)s)' % metadata
     decorated = eval(code, {'cls': callable_, 'symbol': symbol})
     decorated.__doc__ = fn.__doc__
+    fn.__func__.__doc__ = doc
     return decorated
-    #return update_wrapper(decorated, fn)
 
 
 class PluginLoader(object):

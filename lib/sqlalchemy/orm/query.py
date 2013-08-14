@@ -29,14 +29,13 @@ from .path_registry import PathRegistry
 from .util import (
     AliasedClass, ORMAdapter, join as orm_join, with_parent, aliased
     )
-from .. import sql, util, log, exc as sa_exc, inspect, inspection, \
-        types as sqltypes
+from .. import sql, util, log, exc as sa_exc, inspect, inspection
 from ..sql.expression import _interpret_as_from
 from ..sql import (
         util as sql_util,
         expression, visitors
     )
-properties = util.importlater("sqlalchemy.orm", "properties")
+from . import properties
 
 __all__ = ['Query', 'QueryContext', 'aliased']
 

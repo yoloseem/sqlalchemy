@@ -68,14 +68,6 @@ from .. import util as sa_util
 from ..util.langhelpers import public_factory
 from . import interfaces
 
-# here, we can establish InstrumentationManager back
-# in sqlalchemy.orm and sqlalchemy.orm.interfaces, which
-# also re-establishes the extended instrumentation system.
-#from ..ext import instrumentation as _ext_instrumentation
-#InstrumentationManager = \
-#    interfaces.InstrumentationManager = \
-#    _ext_instrumentation.InstrumentationManager
-
 __all__ = (
     'EXT_CONTINUE',
     'EXT_STOP',
@@ -167,7 +159,7 @@ def create_session(bind=None, **kwargs):
     kwargs.setdefault('expire_on_commit', False)
     return Session(bind=bind, **kwargs)
 
-relationship = public_factory(RelationshipProperty)
+relationship = public_factory(RelationshipProperty, ".orm.relationship")
 
 def relation(*arg, **kw):
     """A synonym for :func:`relationship`."""
@@ -195,8 +187,8 @@ def dynamic_loader(argument, **kw):
     return relationship(argument, **kw)
 
 
-column_property = public_factory(ColumnProperty)
-composite = public_factory(CompositeProperty)
+column_property = public_factory(ColumnProperty, ".orm.column_property")
+composite = public_factory(CompositeProperty, ".orm.composite")
 
 
 def backref(name, **kwargs):
@@ -227,11 +219,12 @@ def deferred(*columns, **kwargs):
     return ColumnProperty(deferred=True, *columns, **kwargs)
 
 
-mapper = public_factory(Mapper)
+mapper = public_factory(Mapper, ".orm.mapper")
 
-synonym = public_factory(SynonymProperty)
+synonym = public_factory(SynonymProperty, ".orm.synonym")
 
-comparable_property = public_factory(ComparableProperty)
+comparable_property = public_factory(ComparableProperty,
+                    ".orm.comparable_property")
 
 
 @sa_util.deprecated("0.7", message=":func:`.compile_mappers` "
@@ -504,7 +497,7 @@ def immediateload(*keys):
     """
     return strategies.EagerLazyOption(keys, lazy='immediate')
 
-contains_alias = public_factory(AliasOption)
+contains_alias = public_factory(AliasOption, ".orm.contains_alias")
 
 
 def contains_eager(*keys, **kwargs):
