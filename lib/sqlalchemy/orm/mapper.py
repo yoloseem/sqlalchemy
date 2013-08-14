@@ -26,9 +26,11 @@ from . import instrumentation, attributes, \
                         exc as orm_exc, events, loading
 from .interfaces import MapperProperty, _InspectionAttr, _MappedAttribute
 
-from .util import _INSTRUMENTOR, _class_to_mapper, \
-        _state_mapper, class_mapper, \
-        PathRegistry, state_str
+from .base import _class_to_mapper, _state_mapper, class_mapper, \
+        state_str, _INSTRUMENTOR
+from .path_registry import PathRegistry
+
+
 import sys
 properties = util.importlater("sqlalchemy.orm", "properties")
 descriptor_props = util.importlater("sqlalchemy.orm", "descriptor_props")
@@ -740,21 +742,12 @@ class Mapper(_InspectionAttr):
 
         manager.info[_INSTRUMENTOR] = self
 
-    @util.deprecated("0.7", message=":meth:`.Mapper.compile` "
-                            "is replaced by :func:`.configure_mappers`")
-    def compile(self):
-        """Initialize the inter-mapper relationships of all mappers that
-        have been constructed thus far.
 
+    @classmethod
+    def _configure_all(cls):
+        """Class-level path to the :func:`.configure_mappers` call.
         """
         configure_mappers()
-        return self
-
-    @property
-    @util.deprecated("0.7", message=":attr:`.Mapper.compiled` "
-                            "is replaced by :attr:`.Mapper.configured`")
-    def compiled(self):
-        return self.configured
 
     def dispose(self):
         # Disable any attribute-based compilation.
@@ -2107,7 +2100,6 @@ class Mapper(_InspectionAttr):
                     result[table].append((m, m._inherits_equated_pairs))
 
         return result
-
 
 
 def configure_mappers():

@@ -29,17 +29,15 @@ alternate instrumentation forms.
 """
 
 
-from . import exc, collections, events, interfaces
-from operator import attrgetter
+from . import exc, collections, events, interfaces, state
 from .. import event, util
-state = util.importlater("sqlalchemy.orm", "state")
-
+from . import base
 
 class ClassManager(dict):
     """tracks state information at the class level."""
 
-    MANAGER_ATTR = '_sa_class_manager'
-    STATE_ATTR = '_sa_instance_state'
+    MANAGER_ATTR = base.DEFAULT_MANAGER_ATTR
+    STATE_ATTR = base.DEFAULT_STATE_ATTR
 
     deferred_scalar_loader = None
 
@@ -170,9 +168,7 @@ class ClassManager(dict):
 
     @util.hybridmethod
     def manager_getter(self):
-        def manager_of_class(cls):
-            return cls.__dict__.get(ClassManager.MANAGER_ATTR, None)
-        return manager_of_class
+        return _default_manager_getter
 
     @util.hybridmethod
     def state_getter(self):
@@ -183,11 +179,12 @@ class ClassManager(dict):
         instance.
         """
 
-        return attrgetter(self.STATE_ATTR)
+        return _default_state_getter
 
     @util.hybridmethod
     def dict_getter(self):
-        return attrgetter('__dict__')
+        return _default_dict_getter
+
 
     def instrument_attribute(self, key, inst, propagated=False):
         if propagated:
@@ -302,6 +299,9 @@ class ClassManager(dict):
     def teardown_instance(self, instance):
         delattr(instance, self.STATE_ATTR)
 
+    def _serialize(self, state, state_dict):
+        return _SerializeManager(state, state_dict)
+
     def _new_state_if_none(self, instance):
         """Install a default InstanceState if none is present.
 
@@ -341,6 +341,37 @@ class ClassManager(dict):
         return '<%s of %r at %x>' % (
             self.__class__.__name__, self.class_, id(self))
 
+class _SerializeManager(object):
+    """Provide serialization of a :class:`.ClassManager`.
+
+    The :class:`.InstanceState` uses ``__init__()`` on serialize
+    and ``__call__()`` on deserialize.
+
+    """
+    def __init__(self, state, d):
+        self.class_ = state.class_
+        manager = state.manager
+        manager.dispatch.pickle(state, d)
+
+    def __call__(self, state, inst, state_dict):
+        state.manager = manager = manager_of_class(self.class_)
+        if manager is None:
+            raise exc.UnmappedInstanceError(
+                        inst,
+                        "Cannot deserialize object of type %r - "
+                        "no mapper() has "
+                        "been configured for this class within the current "
+                        "Python process!" %
+                        self.class_)
+        elif manager.is_mapped and not manager.mapper.configured:
+            manager.mapper._configure_all()
+
+        # setup _sa_instance_state ahead of time so that
+        # unpickle events can access the object normally.
+        # see [ticket:2362]
+        if inst is not None:
+            manager.setup_instance(inst, state)
+        manager.dispatch.unpickle(state, state_dict)
 
 class InstrumentationFactory(object):
     """Factory for new ClassManager instances."""
@@ -386,6 +417,14 @@ class InstrumentationFactory(object):
 # when importred.
 _instrumentation_factory = InstrumentationFactory()
 
+# these attributes are replaced by sqlalchemy.ext.instrumentation
+# when a non-standard InstrumentationManager class is first
+# used to instrument a class.
+instance_state = _default_state_getter = base.instance_state
+
+instance_dict = _default_dict_getter = base.instance_dict
+
+manager_of_class = _default_manager_getter = base.manager_of_class
 
 def register_class(class_):
     """Register class instrumentation.
@@ -416,15 +455,6 @@ def is_instrumented(instance, key):
     """
     return manager_of_class(instance.__class__).\
                         is_instrumented(key, search=True)
-
-# these attributes are replaced by sqlalchemy.ext.instrumentation
-# when a non-standard InstrumentationManager class is first
-# used to instrument a class.
-instance_state = _default_state_getter = ClassManager.state_getter()
-
-instance_dict = _default_dict_getter = ClassManager.dict_getter()
-
-manager_of_class = _default_manager_getter = ClassManager.manager_getter()
 
 
 def _generate_init(class_, class_manager):

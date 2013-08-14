@@ -21,8 +21,10 @@ from __future__ import absolute_import
 from .. import exc as sa_exc, util, inspect
 from ..sql import operators
 from collections import deque
+from .base import _is_aliased_class, _class_to_mapper
+from .path_registry import PathRegistry
 
-orm_util = util.importlater('sqlalchemy.orm', 'util')
+orm_util = util.importlater("sqlalchemy.orm", "util")
 collections = util.importlater('sqlalchemy.orm', 'collections')
 
 __all__ = (
@@ -608,10 +610,10 @@ class PropertyOption(MapperOption):
         self.__dict__ = state
 
     def _find_entity_prop_comparator(self, query, token, mapper, raiseerr):
-        if orm_util._is_aliased_class(mapper):
+        if _is_aliased_class(mapper):
             searchfor = mapper
         else:
-            searchfor = orm_util._class_to_mapper(mapper)
+            searchfor = _class_to_mapper(mapper)
         for ent in query._mapper_entities:
             if ent.corresponds_to(searchfor):
                 return ent
@@ -657,7 +659,7 @@ class PropertyOption(MapperOption):
         Return a list of affected paths.
 
         """
-        path = orm_util.PathRegistry.root
+        path = PathRegistry.root
         entity = None
         paths = []
         no_result = []

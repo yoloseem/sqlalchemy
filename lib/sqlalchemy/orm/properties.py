@@ -26,7 +26,6 @@ from .interfaces import MANYTOMANY, MANYTOONE, ONETOMANY,\
 
 dynamic = util.importlater("sqlalchemy.orm", "dynamic")
 mapperlib = util.importlater("sqlalchemy.orm", "mapperlib")
-NoneType = type(None)
 
 from .descriptor_props import CompositeProperty, SynonymProperty, \
             ComparableProperty, ConcreteInheritedProperty
@@ -471,7 +470,7 @@ class RelationshipProperty(StrategizedProperty):
               or many-to-many context produce a NOT EXISTS clause.
 
             """
-            if isinstance(other, (NoneType, expression.Null)):
+            if isinstance(other, (util.NoneType, expression.Null)):
                 if self.property.direction in [ONETOMANY, MANYTOMANY]:
                     return ~self._criterion_exists()
                 else:
@@ -770,7 +769,7 @@ class RelationshipProperty(StrategizedProperty):
               or many-to-many context produce an EXISTS clause.
 
             """
-            if isinstance(other, (NoneType, expression.Null)):
+            if isinstance(other, (util.NoneType, expression.Null)):
                 if self.property.direction == MANYTOONE:
                     return sql.or_(*[x != None for x in
                                    self.property._calculated_foreign_keys])
