@@ -43,7 +43,6 @@ __all__ = (
     )
 
 _mapper_registry = weakref.WeakKeyDictionary()
-_new_mappers = False
 _already_compiling = False
 
 _memoized_configured_property = util.group_expirable_memoized_property()
@@ -92,6 +91,9 @@ class Mapper(_InspectionAttr):
 
 
     """
+
+    _new_mappers = False
+
     def __init__(self,
                  class_,
                  local_table,
@@ -224,8 +226,7 @@ class Mapper(_InspectionAttr):
             self._configure_properties()
             self._configure_polymorphic_setter()
             self._configure_pks()
-            global _new_mappers
-            _new_mappers = True
+            Mapper._new_mappers = True
             self._log("constructed")
             self._expire_memoizations()
         finally:
@@ -1358,7 +1359,7 @@ class Mapper(_InspectionAttr):
         """return a MapperProperty associated with the given key.
         """
 
-        if _configure_mappers and _new_mappers:
+        if _configure_mappers and Mapper._new_mappers:
             configure_mappers()
 
         try:
@@ -1376,7 +1377,7 @@ class Mapper(_InspectionAttr):
     @property
     def iterate_properties(self):
         """return an iterator of all MapperProperty objects."""
-        if _new_mappers:
+        if Mapper._new_mappers:
             configure_mappers()
         return iter(self._props.values())
 
@@ -1450,7 +1451,7 @@ class Mapper(_InspectionAttr):
 
     @_memoized_configured_property
     def _with_polymorphic_mappers(self):
-        if _new_mappers:
+        if Mapper._new_mappers:
             configure_mappers()
         if not self.with_polymorphic:
             return []
@@ -1557,7 +1558,7 @@ class Mapper(_InspectionAttr):
             :attr:`.Mapper.all_orm_descriptors`
 
         """
-        if _new_mappers:
+        if Mapper._new_mappers:
             configure_mappers()
         return util.ImmutableProperties(self._props)
 
@@ -1648,7 +1649,7 @@ class Mapper(_InspectionAttr):
         return self._filter_properties(descriptor_props.CompositeProperty)
 
     def _filter_properties(self, type_):
-        if _new_mappers:
+        if Mapper._new_mappers:
             configure_mappers()
         return util.ImmutableProperties(util.OrderedDict(
             (k, v) for k, v in self._props.items()
@@ -2111,8 +2112,7 @@ def configure_mappers():
 
     """
 
-    global _new_mappers
-    if not _new_mappers:
+    if not Mapper._new_mappers:
         return
 
     _call_configured = None
@@ -2125,7 +2125,7 @@ def configure_mappers():
         try:
 
             # double-check inside mutex
-            if not _new_mappers:
+            if not Mapper._new_mappers:
                 return
 
             # initialize properties on all mappers
@@ -2154,7 +2154,7 @@ def configure_mappers():
                             mapper._configure_failed = exc
                         raise
 
-            _new_mappers = False
+            Mapper._new_mappers = False
         finally:
             _already_compiling = False
     finally:
@@ -2233,7 +2233,7 @@ def _event_on_first_init(manager, cls):
 
     instrumenting_mapper = manager.info.get(_INSTRUMENTOR)
     if instrumenting_mapper:
-        if _new_mappers:
+        if Mapper._new_mappers:
             configure_mappers()
 
 
@@ -2248,7 +2248,7 @@ def _event_on_init(state, args, kwargs):
 
     instrumenting_mapper = state.manager.info.get(_INSTRUMENTOR)
     if instrumenting_mapper:
-        if _new_mappers:
+        if Mapper._new_mappers:
             configure_mappers()
         if instrumenting_mapper._set_polymorphic_identity:
             instrumenting_mapper._set_polymorphic_identity(state)

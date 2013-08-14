@@ -784,8 +784,8 @@ class RelationshipProperty(StrategizedProperty):
 
         @util.memoized_property
         def property(self):
-            if mapperlib.module._new_mappers:
-                configure_mappers()
+            if mapperlib.Mapper._new_mappers:
+                mapperlib.Mapper._configure_all()
             return self.prop
 
     def compare(self, op, value,

@@ -215,15 +215,14 @@ def _entity_descriptor(entity, key):
 _state_mapper = util.dottedgetter('manager.mapper')
 
 @inspection._inspects(type)
-@util.dependencies("sqlalchemy.orm.mapperlib")
-def _inspect_mapped_class(mapperlib, class_, configure=False):
+def _inspect_mapped_class(class_, configure=False):
     try:
         class_manager = manager_of_class(class_)
         if not class_manager.is_mapped:
             return None
         mapper = class_manager.mapper
-        if configure and mapperlib.module._new_mappers:
-            mapperlib.configure_mappers()
+        if configure and mapper._new_mappers:
+            mapper._configure_all()
         return mapper
 
     except exc.NO_STATE:

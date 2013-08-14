@@ -196,16 +196,16 @@ class MapperTest(_fixtures.FixtureTest, AssertsCompiledSQL):
 
         mapper(User, users)
         sa.orm.configure_mappers()
-        assert sa.orm.mapperlib._new_mappers is False
+        assert sa.orm.mapperlib.Mapper._new_mappers is False
 
         m = mapper(Address, addresses, properties={
                 'user': relationship(User, backref="addresses")})
 
         assert m.configured is False
-        assert sa.orm.mapperlib._new_mappers is True
+        assert sa.orm.mapperlib.Mapper._new_mappers is True
         u = User()
         assert User.addresses
-        assert sa.orm.mapperlib._new_mappers is False
+        assert sa.orm.mapperlib.Mapper._new_mappers is False
 
     def test_configure_on_session(self):
         User, users = self.classes.User, self.tables.users
