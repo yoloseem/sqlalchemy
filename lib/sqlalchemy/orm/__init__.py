@@ -24,11 +24,13 @@ from .mapper import (
 from .interfaces import (
      EXT_CONTINUE,
      EXT_STOP,
-     MapperExtension,
      PropComparator,
+     )
+from .deprecated_interfaces import (
+     MapperExtension,
      SessionExtension,
      AttributeExtension,
-     )
+)
 from .util import (
      aliased,
      join,

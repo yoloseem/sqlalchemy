@@ -712,26 +712,6 @@ class group_expirable_memoized_property(object):
 
 
 class importlater(object):
-    """Deferred import object.
-
-    e.g.::
-
-        somesubmod = importlater("mypackage.somemodule", "somesubmod")
-
-    is equivalent to::
-
-        from mypackage.somemodule import somesubmod
-
-    except evaluted upon attribute access to "somesubmod".
-
-    importlater() currently requires that resolve_all() be
-    called, typically at the bottom of a package's __init__.py.
-    This is so that __import__ still called only at
-    module import time, and not potentially within
-    a non-main thread later on.
-
-    """
-
     _unresolved = set()
 
     _by_key = {}

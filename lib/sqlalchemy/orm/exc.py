@@ -6,7 +6,6 @@
 
 """SQLAlchemy ORM exceptions."""
 from .. import exc as sa_exc, util
-attributes = util.importlater('sqlalchemy.orm', 'attributes')
 
 NO_STATE = (AttributeError, KeyError)
 """Exception types that may be raised by instrumentation implementations."""
@@ -68,7 +67,7 @@ class UnmappedInstanceError(UnmappedError):
     def __init__(self, base, obj, msg=None):
         if not msg:
             try:
-                mapper = base.class_mapper(type(obj))
+                base.class_mapper(type(obj))
                 name = _safe_cls_name(type(obj))
                 msg = ("Class %r is mapped, but this instance lacks "
                        "instrumentation.  This occurs when the instance"
@@ -150,10 +149,10 @@ def _safe_cls_name(cls):
             cls_name = repr(cls)
     return cls_name
 
-
-def _default_unmapped(cls):
+@util.dependencies("sqlalchemy.orm.base")
+def _default_unmapped(base, cls):
     try:
-        mappers = attributes.manager_of_class(cls).mappers
+        mappers = base.manager_of_class(cls).mappers
     except NO_STATE:
         mappers = {}
     except TypeError:

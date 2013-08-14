@@ -27,8 +27,6 @@ from .base import _InspectionAttr, _MappedAttribute
 from .path_registry import PathRegistry
 import collections
 
-#from . import util as orm_util
-orm_util = util.importlater("sqlalchemy.orm", "util")
 
 __all__ = (
     'AttributeExtension',
@@ -46,11 +44,6 @@ __all__ = (
     'StrategizedOption',
     'StrategizedProperty',
     )
-
-
-from .deprecated_interfaces import AttributeExtension, \
-    SessionExtension, \
-    MapperExtension
 
 
 
@@ -593,7 +586,8 @@ class PropertyOption(MapperOption):
             else:
                 return None
 
-    def _process_paths(self, query, raiseerr):
+    @util.dependencies("sqlalchemy.orm.util")
+    def _process_paths(self, orm_util, query, raiseerr):
         """reconcile the 'key' for this PropertyOption with
         the current path and entities of the query.
 
