@@ -26,7 +26,6 @@ from ..sql.util import (
 from ..sql import operators, expression, visitors
 from .interfaces import MANYTOMANY, MANYTOONE, ONETOMANY, StrategizedProperty, PropComparator
 from ..inspection import inspect
-from . import properties
 from . import mapper as mapperlib
 
 def remote(expr):

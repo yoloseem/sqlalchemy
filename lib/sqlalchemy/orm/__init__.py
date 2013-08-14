@@ -68,6 +68,7 @@ from .. import util as sa_util
 from ..util.langhelpers import public_factory
 from . import interfaces
 from . import dynamic
+from . import events
 
 __all__ = (
     'EXT_CONTINUE',

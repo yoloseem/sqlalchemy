@@ -12,7 +12,11 @@ from .base import _mapper_or_none
 import inspect
 import weakref
 from . import interfaces
-
+from . import mapperlib, instrumentation
+from .session import Session, sessionmaker
+from .scoping import scoped_session
+from .attributes import QueryableAttribute
+from . import mapper as mapperfunc
 
 class InstrumentationEvents(event.Events):
     """Events related to class instrumentation events.
@@ -44,6 +48,8 @@ class InstrumentationEvents(event.Events):
     """
 
     _target_class_doc = "SomeBaseClass"
+    _dispatch_target = instrumentation.InstrumentationFactory
+
 
     @classmethod
     def _accept_with(cls, target):
@@ -53,8 +59,7 @@ class InstrumentationEvents(event.Events):
             return None
 
     @classmethod
-    @util.dependencies("sqlalchemy.orm.instrumentation")
-    def _listen(cls, instrumentation, event_key, propagate=True):
+    def _listen(cls, event_key, propagate=True):
         target, identifier, fn = \
             event_key.dispatch_target, event_key.identifier, event_key.fn
 
@@ -78,8 +83,7 @@ class InstrumentationEvents(event.Events):
             with_wrapper(listen).base_listen()
 
     @classmethod
-    @util.dependencies("sqlalchemy.orm.instrumentation")
-    def _clear(cls, instrumentation):
+    def _clear(cls):
         super(InstrumentationEvents, cls)._clear()
         instrumentation._instrumentation_factory.dispatch._clear()
 
@@ -103,6 +107,7 @@ class InstrumentationEvents(event.Events):
         """Called when an attribute is instrumented."""
 
 
+
 class _InstrumentationEventsHold(object):
     """temporary marker object used to transfer from _accept_with() to
     _listen() on the InstrumentationEvents class.
@@ -112,7 +117,6 @@ class _InstrumentationEventsHold(object):
         self.class_ = class_
 
     dispatch = event.dispatcher(InstrumentationEvents)
-
 
 class InstanceEvents(event.Events):
     """Define events specific to object lifecycle.
@@ -157,20 +161,23 @@ class InstanceEvents(event.Events):
 
     _target_class_doc = "SomeClass"
 
+    _dispatch_target = instrumentation.ClassManager
+
     @classmethod
-    @util.dependencies(
-            "sqlalchemy.orm.mapperlib",
-            "sqlalchemy.orm.instrumentation",
-            "sqlalchemy.orm")
-    def _accept_with(cls, mapperlib, instrumentation, orm, target):
-        if isinstance(target, orm.instrumentation.ClassManager):
+    def _new_classmanager_instance(cls, class_, classmanager):
+        _InstanceEventsHold.populate(class_, classmanager)
+
+    @classmethod
+    @util.dependencies("sqlalchemy.orm")
+    def _accept_with(cls, orm, target):
+        if isinstance(target, instrumentation.ClassManager):
             return target
         elif isinstance(target, mapperlib.Mapper):
             return target.class_manager
         elif target is orm.mapper:
             return instrumentation.ClassManager
         elif isinstance(target, type):
-            if issubclass(target, orm.Mapper):
+            if issubclass(target, mapperlib.Mapper):
                 return instrumentation.ClassManager
             else:
                 manager = instrumentation.manager_of_class(target)
@@ -341,6 +348,8 @@ class _EventsHold(event.RefCollection):
         cls.all_holds.clear()
 
     class HoldEvents(object):
+        _dispatch_target = None
+
         @classmethod
         def _listen(cls, event_key, raw=False, propagate=False):
             target, identifier, fn = \
@@ -390,8 +399,7 @@ class _EventsHold(event.RefCollection):
 class _InstanceEventsHold(_EventsHold):
     all_holds = weakref.WeakKeyDictionary()
 
-    @util.dependencies("sqlalchemy.orm.instrumentation")
-    def resolve(self, instrumentation, class_):
+    def resolve(self, class_):
         return instrumentation.manager_of_class(class_)
 
     class HoldInstanceEvents(_EventsHold.HoldEvents, InstanceEvents):
@@ -472,14 +480,19 @@ class MapperEvents(event.Events):
     """
 
     _target_class_doc = "SomeClass"
+    _dispatch_target = mapperlib.Mapper
+
+    @classmethod
+    def _new_mapper_instance(cls, class_, mapper):
+        _MapperEventsHold.populate(class_, mapper)
 
     @classmethod
     @util.dependencies("sqlalchemy.orm")
     def _accept_with(cls, orm, target):
         if target is orm.mapper:
-            return orm.Mapper
+            return mapperlib.Mapper
         elif isinstance(target, type):
-            if issubclass(target, orm.Mapper):
+            if issubclass(target, mapperlib.Mapper):
                 return target
             else:
                 mapper = _mapper_or_none(target)
@@ -491,8 +504,7 @@ class MapperEvents(event.Events):
             return target
 
     @classmethod
-    @util.dependencies("sqlalchemy.orm")
-    def _listen(cls, orm, event_key,
+    def _listen(cls, event_key,
                             raw=False, retval=False, propagate=False):
         target, identifier, fn = \
             event_key.dispatch_target, event_key.identifier, event_key.fn
@@ -514,7 +526,7 @@ class MapperEvents(event.Events):
                     arg[target_index] = arg[target_index].obj()
                 if not retval:
                     wrapped_fn(*arg, **kw)
-                    return orm.interfaces.EXT_CONTINUE
+                    return interfaces.EXT_CONTINUE
                 else:
                     return wrapped_fn(*arg, **kw)
             fn = wrap
@@ -1076,7 +1088,6 @@ class MapperEvents(event.Events):
 
         """
 
-
 class _MapperEventsHold(_EventsHold):
     all_holds = weakref.WeakKeyDictionary()
 
@@ -1116,30 +1127,31 @@ class SessionEvents(event.Events):
 
     _target_class_doc = "SomeSessionOrFactory"
 
+    _dispatch_target = Session
+
     @classmethod
-    @util.dependencies("sqlalchemy.orm")
-    def _accept_with(cls, orm, target):
-        if isinstance(target, orm.scoped_session):
+    def _accept_with(cls, target):
+        if isinstance(target, scoped_session):
 
             target = target.session_factory
-            if not isinstance(target, orm.sessionmaker) and \
+            if not isinstance(target, sessionmaker) and \
                 (
                     not isinstance(target, type) or
-                    not issubclass(target, orm.Session)
+                    not issubclass(target, Session)
                 ):
                 raise exc.ArgumentError(
                             "Session event listen on a scoped_session "
                             "requires that its creation callable "
                             "is associated with the Session class.")
 
-        if isinstance(target, orm.sessionmaker):
+        if isinstance(target, sessionmaker):
             return target.class_
         elif isinstance(target, type):
-            if issubclass(target, orm.scoped_session):
-                return orm.Session
-            elif issubclass(target, orm.Session):
+            if issubclass(target, scoped_session):
+                return Session
+            elif issubclass(target, Session):
                 return target
-        elif isinstance(target, orm.Session):
+        elif isinstance(target, Session):
             return target
         else:
             return None
@@ -1522,6 +1534,14 @@ class AttributeEvents(event.Events):
     """
 
     _target_class_doc = "SomeClass.some_attribute"
+    _dispatch_target = QueryableAttribute
+
+
+    @classmethod
+    def _set_dispatch(cls, dispatch_cls):
+        super(cls, cls)._set_dispatch(dispatch_cls)
+        dispatch_cls._active_history = False
+
 
     @classmethod
     def _accept_with(cls, target):
@@ -1532,8 +1552,7 @@ class AttributeEvents(event.Events):
             return target
 
     @classmethod
-    @util.dependencies("sqlalchemy.orm.instrumentation")
-    def _listen(cls, instrumentation, event_key, active_history=False,
+    def _listen(cls, event_key, active_history=False,
                                         raw=False, retval=False,
                                         propagate=False):
 
@@ -1637,3 +1656,4 @@ class AttributeEvents(event.Events):
          the given value, or a new effective value, should be returned.
 
         """
+

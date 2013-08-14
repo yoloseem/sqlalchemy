@@ -15,7 +15,7 @@ defines a large part of the ORM's interactivity.
 
 import operator
 from .. import util, event, inspection
-from . import interfaces, collections, events, exc as orm_exc
+from . import interfaces, collections, exc as orm_exc
 
 from .base import instance_state, instance_dict, manager_of_class
 
@@ -68,9 +68,6 @@ class QueryableAttribute(interfaces._MappedAttribute,
             for base in manager._bases:
                 if key in base:
                     self.dispatch._update(base[key].dispatch)
-
-    dispatch = event.dispatcher(events.AttributeEvents)
-    dispatch.dispatch_cls._active_history = False
 
     @util.memoized_property
     def _supports_population(self):

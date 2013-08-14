@@ -29,7 +29,7 @@ alternate instrumentation forms.
 """
 
 
-from . import exc, collections, events, interfaces, state
+from . import exc, collections, interfaces, state
 from .. import event, util
 from . import base
 
@@ -61,7 +61,8 @@ class ClassManager(dict):
         for base in self._bases:
             self.update(base)
 
-        events._InstanceEventsHold.populate(class_, self)
+        self.dispatch._events._new_classmanager_instance(class_, self)
+        #events._InstanceEventsHold.populate(class_, self)
 
         for basecls in class_.__mro__:
             mgr = manager_of_class(basecls)
@@ -76,8 +77,6 @@ class ClassManager(dict):
                         "as SQLAlchemy instrumentation often creates "
                         "reference cycles.  Please remove this method." %
                         class_)
-
-    dispatch = event.dispatcher(events.InstanceEvents)
 
     def __hash__(self):
         return id(self)
@@ -375,8 +374,6 @@ class _SerializeManager(object):
 
 class InstrumentationFactory(object):
     """Factory for new ClassManager instances."""
-
-    dispatch = event.dispatcher(events.InstrumentationEvents)
 
     def create_manager_for_cls(self, class_):
         assert class_ is not None

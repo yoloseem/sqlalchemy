@@ -114,7 +114,7 @@ from .schema import (
 
 
 from .inspection import inspect
-
+from . import events
 from .engine import create_engine, engine_from_config
 
 

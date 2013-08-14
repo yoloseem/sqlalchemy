@@ -31,7 +31,7 @@ as components in SQL expressions.
 import re
 import inspect
 from .. import exc, util, event, inspection
-from ..events import SchemaEventTarget
+from .base import SchemaEventTarget
 from . import visitors
 from . import type_api
 from .base import _bind_or_error, ColumnCollection

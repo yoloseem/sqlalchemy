@@ -21,7 +21,7 @@ from .base import (
     _none_set, state_str, instance_str
     )
 from .unitofwork import UOWTransaction
-from .events import SessionEvents
+#from .events import SessionEvents
 from . import state as statelib
 import sys
 
@@ -646,8 +646,6 @@ class Session(_SessionClassMethods):
         if not self.autocommit:
             self.begin()
         _sessions[self.hash_key] = self
-
-    dispatch = event.dispatcher(SessionEvents)
 
     connection_callable = None
 

@@ -22,7 +22,7 @@ from collections import deque
 
 from .. import sql, util, log, exc as sa_exc, event, schema, inspection
 from ..sql import expression, visitors, operators, util as sql_util
-from . import instrumentation, attributes, exc as orm_exc, events, loading
+from . import instrumentation, attributes, exc as orm_exc, loading
 from . import properties
 from .interfaces import MapperProperty, _InspectionAttr, _MappedAttribute
 
@@ -556,7 +556,7 @@ class Mapper(_InspectionAttr):
         # configure_mappers() until construction succeeds)
         _CONFIGURE_MUTEX.acquire()
         try:
-            events._MapperEventsHold.populate(class_, self)
+            self.dispatch._events._new_mapper_instance(class_, self)
             self._configure_inheritance()
             self._configure_legacy_instrument_class()
             self._configure_class_instrumentation()
@@ -814,8 +814,6 @@ class Mapper(_InspectionAttr):
 
     c = None
     """A synonym for :attr:`~.Mapper.columns`."""
-
-    dispatch = event.dispatcher(events.MapperEvents)
 
     @util.memoized_property
     def _path_registry(self):
