@@ -62,68 +62,10 @@ from .scoping import (
     scoped_session
 )
 from . import mapper as mapperlib
-from . import strategies
 from .query import AliasOption, Query
-from .. import util as sa_util
 from ..util.langhelpers import public_factory
-from . import interfaces
-from . import dynamic
-from . import events
-
-__all__ = (
-    'EXT_CONTINUE',
-    'EXT_STOP',
-    'MapperExtension',
-    'AttributeExtension',
-    'PropComparator',
-    'Query',
-    'Session',
-    'aliased',
-    'backref',
-    'class_mapper',
-    'clear_mappers',
-    'column_property',
-    'comparable_property',
-    'compile_mappers',
-    'configure_mappers',
-    'composite',
-    'contains_alias',
-    'contains_eager',
-    'create_session',
-    'defer',
-    'deferred',
-    'dynamic_loader',
-    'eagerload',
-    'eagerload_all',
-    'foreign',
-    'immediateload',
-    'join',
-    'joinedload',
-    'joinedload_all',
-    'lazyload',
-    'mapper',
-    'make_transient',
-    'noload',
-    'object_mapper',
-    'object_session',
-    'outerjoin',
-    'polymorphic_union',
-    'reconstructor',
-    'relationship',
-    'relation',
-    'remote',
-    'scoped_session',
-    'sessionmaker',
-    'subqueryload',
-    'subqueryload_all',
-    'synonym',
-    'undefer',
-    'undefer_group',
-    'validates',
-    'was_deleted',
-    'with_polymorphic'
-    )
-
+from .. import util as _sa_util
+from . import strategies as _strategies
 
 def create_session(bind=None, **kwargs):
     """Create a new :class:`.Session`
@@ -229,7 +171,7 @@ comparable_property = public_factory(ComparableProperty,
                     ".orm.comparable_property")
 
 
-@sa_util.deprecated("0.7", message=":func:`.compile_mappers` "
+@_sa_util.deprecated("0.7", message=":func:`.compile_mappers` "
                             "is renamed to :func:`.configure_mappers`")
 def compile_mappers():
     """Initialize the inter-mapper relationships of all mappers that have
@@ -325,11 +267,11 @@ def joinedload(*keys, **kw):
     innerjoin = kw.pop('innerjoin', None)
     if innerjoin is not None:
         return (
-             strategies.EagerLazyOption(keys, lazy='joined'),
-             strategies.EagerJoinOption(keys, innerjoin)
+             _strategies.EagerLazyOption(keys, lazy='joined'),
+             _strategies.EagerJoinOption(keys, innerjoin)
          )
     else:
-        return strategies.EagerLazyOption(keys, lazy='joined')
+        return _strategies.EagerLazyOption(keys, lazy='joined')
 
 
 def joinedload_all(*keys, **kw):
@@ -366,11 +308,11 @@ def joinedload_all(*keys, **kw):
     innerjoin = kw.pop('innerjoin', None)
     if innerjoin is not None:
         return (
-            strategies.EagerLazyOption(keys, lazy='joined', chained=True),
-            strategies.EagerJoinOption(keys, innerjoin, chained=True)
+            _strategies.EagerLazyOption(keys, lazy='joined', chained=True),
+            _strategies.EagerJoinOption(keys, innerjoin, chained=True)
         )
     else:
-        return strategies.EagerLazyOption(keys, lazy='joined', chained=True)
+        return _strategies.EagerLazyOption(keys, lazy='joined', chained=True)
 
 
 def eagerload(*args, **kwargs):
@@ -409,7 +351,7 @@ def subqueryload(*keys):
     See also:  :func:`joinedload`, :func:`lazyload`
 
     """
-    return strategies.EagerLazyOption(keys, lazy="subquery")
+    return _strategies.EagerLazyOption(keys, lazy="subquery")
 
 
 def subqueryload_all(*keys):
@@ -434,7 +376,7 @@ def subqueryload_all(*keys):
     See also:  :func:`joinedload_all`, :func:`lazyload`, :func:`immediateload`
 
     """
-    return strategies.EagerLazyOption(keys, lazy="subquery", chained=True)
+    return _strategies.EagerLazyOption(keys, lazy="subquery", chained=True)
 
 
 def lazyload(*keys):
@@ -446,7 +388,7 @@ def lazyload(*keys):
     See also:  :func:`eagerload`, :func:`subqueryload`, :func:`immediateload`
 
     """
-    return strategies.EagerLazyOption(keys, lazy=True)
+    return _strategies.EagerLazyOption(keys, lazy=True)
 
 
 def lazyload_all(*keys):
@@ -459,7 +401,7 @@ def lazyload_all(*keys):
     See also:  :func:`eagerload`, :func:`subqueryload`, :func:`immediateload`
 
     """
-    return strategies.EagerLazyOption(keys, lazy=True, chained=True)
+    return _strategies.EagerLazyOption(keys, lazy=True, chained=True)
 
 
 def noload(*keys):
@@ -472,7 +414,7 @@ def noload(*keys):
     :func:`subqueryload`, :func:`immediateload`
 
     """
-    return strategies.EagerLazyOption(keys, lazy=None)
+    return _strategies.EagerLazyOption(keys, lazy=None)
 
 
 def immediateload(*keys):
@@ -497,7 +439,7 @@ def immediateload(*keys):
     .. versionadded:: 0.6.5
 
     """
-    return strategies.EagerLazyOption(keys, lazy='immediate')
+    return _strategies.EagerLazyOption(keys, lazy='immediate')
 
 contains_alias = public_factory(AliasOption, ".orm.contains_alias")
 
@@ -541,9 +483,9 @@ def contains_eager(*keys, **kwargs):
     if kwargs:
         raise exc.ArgumentError(
                 'Invalid kwargs for contains_eager: %r' % list(kwargs.keys()))
-    return strategies.EagerLazyOption(keys, lazy='joined',
+    return _strategies.EagerLazyOption(keys, lazy='joined',
             propagate_to_loaders=False, chained=True), \
-        strategies.LoadEagerFromAliasOption(keys, alias=alias, chained=True)
+        _strategies.LoadEagerFromAliasOption(keys, alias=alias, chained=True)
 
 
 def defer(*key):
@@ -588,7 +530,7 @@ def defer(*key):
      multiple targets.
 
     """
-    return strategies.DeferredOption(key, defer=True)
+    return _strategies.DeferredOption(key, defer=True)
 
 
 def undefer(*key):
@@ -637,7 +579,7 @@ def undefer(*key):
      multiple targets.
 
     """
-    return strategies.DeferredOption(key, defer=False)
+    return _strategies.DeferredOption(key, defer=False)
 
 
 def undefer_group(name):
@@ -659,7 +601,21 @@ def undefer_group(name):
      configurational function.
 
     """
-    return strategies.UndeferGroupOption(name)
+    return _strategies.UndeferGroupOption(name)
 
-from .. import util as _sa_util
-_sa_util.dependencies.resolve_all("sqlalchemy.orm")
+
+
+def __go(lcls):
+    global __all__
+    from .. import util as sa_util
+    from . import dynamic
+    from . import events
+    import inspect as _inspect
+
+    __all__ = sorted(name for name, obj in lcls.items()
+                 if not (name.startswith('_') or _inspect.ismodule(obj)))
+
+    _sa_util.dependencies.resolve_all("sqlalchemy.orm")
+
+__go(locals())
+
