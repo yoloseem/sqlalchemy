@@ -16,13 +16,13 @@ from . import (
     )
 from .state import InstanceState
 from .util import _none_set
+from . import properties
 from .interfaces import (
     LoaderStrategy, StrategizedOption, MapperOption, PropertyOption,
     StrategizedProperty
     )
 from .session import _state_session
 import itertools
-
 
 def _register_attribute(strategy, mapper, useobject,
         compare_function=None,
@@ -88,7 +88,7 @@ def _register_attribute(strategy, mapper, useobject,
             for hook in listen_hooks:
                 hook(desc, prop)
 
-
+@properties.ColumnProperty._strategy_for(dict(instrument=False, deferred=False))
 class UninstrumentedColumnLoader(LoaderStrategy):
     """Represent the a non-instrumented MapperProperty.
 
@@ -111,6 +111,8 @@ class UninstrumentedColumnLoader(LoaderStrategy):
         return None, None, None
 
 
+@log.class_logger
+@properties.ColumnProperty._strategy_for(dict(instrument=True, deferred=False))
 class ColumnLoader(LoaderStrategy):
     """Provide loading behavior for a :class:`.ColumnProperty`."""
 
@@ -156,9 +158,9 @@ class ColumnLoader(LoaderStrategy):
             return expire_for_non_present_col, None, None
 
 
-log.class_logger(ColumnLoader)
 
-
+@log.class_logger
+@properties.ColumnProperty._strategy_for(dict(deferred=True, instrument=True))
 class DeferredColumnLoader(LoaderStrategy):
     """Provide loading behavior for a deferred :class:`.ColumnProperty`."""
 
@@ -251,8 +253,6 @@ class DeferredColumnLoader(LoaderStrategy):
         return attributes.ATTR_WAS_SET
 
 
-log.class_logger(DeferredColumnLoader)
-
 
 class LoadDeferredColumns(object):
     """serializable loader object used by DeferredColumnLoader"""
@@ -304,6 +304,8 @@ class AbstractRelationshipLoader(LoaderStrategy):
 
 
 
+@log.class_logger
+@properties.RelationshipProperty._strategy_for(dict(lazy=None), dict(lazy="noload"))
 class NoLoader(AbstractRelationshipLoader):
     """Provide loading behavior for a :class:`.RelationshipProperty`
     with "lazy=None".
@@ -325,9 +327,9 @@ class NoLoader(AbstractRelationshipLoader):
         return invoke_no_load, None, None
 
 
-log.class_logger(NoLoader)
 
-
+@log.class_logger
+@properties.RelationshipProperty._strategy_for(dict(lazy=True), dict(lazy="select"))
 class LazyLoader(AbstractRelationshipLoader):
     """Provide loading behavior for a :class:`.RelationshipProperty`
     with "lazy=True", that is loads when first accessed.
@@ -350,7 +352,6 @@ class LazyLoader(AbstractRelationshipLoader):
 
         # determine if our "lazywhere" clause is the same as the mapper's
         # get() clause.  then we can just use mapper.get()
-        #from sqlalchemy.orm import query
         self.use_get = not self.uselist and \
                         self.mapper._get_clause[0].compare(
                             self._lazywhere,
@@ -630,8 +631,6 @@ class LazyLoader(AbstractRelationshipLoader):
             return reset_for_lazy_callable, None, None
 
 
-log.class_logger(LazyLoader)
-
 
 class LoadLazyAttribute(object):
     """serializable loader object used by LazyLoader"""
@@ -648,6 +647,7 @@ class LoadLazyAttribute(object):
         return strategy._load_for_state(state, passive)
 
 
+@properties.RelationshipProperty._strategy_for(dict(lazy="immediate"))
 class ImmediateLoader(AbstractRelationshipLoader):
     def init_class_attribute(self, mapper):
         self.parent_property.\
@@ -667,6 +667,8 @@ class ImmediateLoader(AbstractRelationshipLoader):
         return None, None, load_immediate
 
 
+@log.class_logger
+@properties.RelationshipProperty._strategy_for(dict(lazy="subquery"))
 class SubqueryLoader(AbstractRelationshipLoader):
     def __init__(self, parent):
         super(SubqueryLoader, self).__init__(parent)
@@ -939,7 +941,7 @@ class SubqueryLoader(AbstractRelationshipLoader):
         collections = path.get(context.attributes, "collections")
         if collections is None:
             collections = dict(
-                    (k, [v[0] for v in v])
+                    (k, [vv[0] for vv in v])
                     for k, v in itertools.groupby(
                         subq,
                         lambda x: x[1:]
@@ -984,9 +986,9 @@ class SubqueryLoader(AbstractRelationshipLoader):
         return load_scalar_from_subq, None, None
 
 
-log.class_logger(SubqueryLoader)
 
-
+@log.class_logger
+@properties.RelationshipProperty._strategy_for(dict(lazy=False), dict(lazy="joined"))
 class JoinedLoader(AbstractRelationshipLoader):
     """Provide loading behavior for a :class:`.RelationshipProperty`
     using joined eager loading.
@@ -1202,7 +1204,7 @@ class JoinedLoader(AbstractRelationshipLoader):
             # by the Query propagates those columns outward.
             # This has the effect
             # of "undefering" those columns.
-            for col in sql_util.find_columns(
+            for col in sql_util._find_columns(
                                 self.parent_property.primaryjoin):
                 if localparent.mapped_table.c.contains_column(col):
                     if adapter:
@@ -1336,9 +1338,6 @@ class JoinedLoader(AbstractRelationshipLoader):
                 None, load_scalar_from_joined_exec
 
 
-log.class_logger(JoinedLoader)
-
-
 class EagerLazyOption(StrategizedOption):
     def __init__(self, key, lazy=True, chained=False,
                     propagate_to_loaders=True
@@ -1354,25 +1353,10 @@ class EagerLazyOption(StrategizedOption):
         self.lazy = lazy
         self.chained = chained
         self.propagate_to_loaders = propagate_to_loaders
-        self.strategy_cls = factory(lazy)
+        self.strategy_cls = properties.RelationshipProperty._strategy_lookup(lazy=lazy)
 
     def get_strategy_class(self):
         return self.strategy_cls
-
-_factory = {
-    False: JoinedLoader,
-    "joined": JoinedLoader,
-    None: NoLoader,
-    "noload": NoLoader,
-    "select": LazyLoader,
-    True: LazyLoader,
-    "subquery": SubqueryLoader,
-    "immediate": ImmediateLoader
-}
-
-
-def factory(identifier):
-    return _factory.get(identifier, LazyLoader)
 
 
 class EagerJoinOption(PropertyOption):

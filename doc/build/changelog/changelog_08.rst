@@ -7,6 +7,62 @@
     :version: 0.8.3
 
     .. change::
+        :tags: bug, orm
+        :tickets: 2779
+
+        Backported a change from 0.9 whereby the iteration of a hierarchy
+        of mappers used in polymorphic inheritance loads is sorted,
+        which allows the SELECT statements generated for polymorphic queries
+        to have deterministic rendering, which in turn helps with caching
+        schemes that cache on the SQL string itself.
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 2794
+
+        Fixed a potential issue in an ordered sequence implementation used
+        by the ORM to iterate mapper hierarchies; under the Jython interpreter
+        this implementation wasn't ordered, even though cPython and Pypy
+        maintained ordering.
+
+    .. change::
+        :tags: bug, sql
+        :tickets: 2801
+
+        Fixed regression dating back to 0.7.9 whereby the name of a CTE might
+        not be properly quoted if it was referred to in multiple FROM clauses.
+        Also in 0.7.11.
+
+    .. change::
+        :tags: bug, examples
+
+        Added "autoincrement=False" to the history table created in the
+        versioning example, as this table shouldn't have autoinc on it
+        in any case, courtesy Patrick Schmid.
+
+    .. change::
+        :tags: bug, sql
+
+        The :meth:`.Operators.notin_` operator added in 0.8 now properly
+        produces the negation of the expression "IN" returns
+        when used against an empty collection.
+
+    .. change::
+        :tags: mysql, bug
+        :tickets: 2791
+
+        Updates to MySQL reserved words for versions 5.5, 5.6, courtesy
+        Hanno Schlichting.  Also in 0.7.11.
+
+    .. change::
+        :tags: sql, bug, cte
+        :tickets: 2783
+
+        Fixed bug in common table expression system where if the CTE were
+        used only as an ``alias()`` construct, it would not render using the
+        WITH keyword.  Also in 0.7.11.
+
+    .. change::
         :tags: feature, examples
 
         Improved the examples in ``examples/generic_associations``, including

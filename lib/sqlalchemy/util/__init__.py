@@ -6,11 +6,11 @@
 
 from .compat import callable, cmp, reduce,  \
     threading, py3k, py33, py2k, jython, pypy, cpython, win32, \
-    pickle, dottedgetter, parse_qsl, namedtuple, next, WeakSet, reraise, \
+    pickle, dottedgetter, parse_qsl, namedtuple, next, reraise, \
     raise_from_cause, text_type, string_types, int_types, binary_type, \
     quote_plus, with_metaclass, print_, itertools_filterfalse, u, ue, b,\
     unquote_plus, b64decode, b64encode, byte_buffer, itertools_filter,\
-    StringIO, inspect_getargspec
+    iterbytes, StringIO, inspect_getargspec
 
 from ._collections import KeyedTuple, ImmutableContainer, immutabledict, \
     Properties, OrderedProperties, ImmutableProperties, OrderedDict, \
@@ -25,7 +25,7 @@ from .langhelpers import iterate_attributes, class_hierarchy, \
     getargspec_init, format_argspec_init, format_argspec_plus, \
     get_func_kwargs, get_cls_kwargs, decorator, as_interface, \
     memoized_property, memoized_instancemethod, md5_hex, \
-    group_expirable_memoized_property, importlater, decode_slice, \
+    group_expirable_memoized_property, dependencies, decode_slice, \
     monkeypatch_proxied_specials, asbool, bool_or_str, coerce_kw_type,\
     duck_type_collection, assert_arg_type, symbol, dictlike_iteritems,\
     classproperty, set_creation_order, warn_exception, warn, NoneType,\

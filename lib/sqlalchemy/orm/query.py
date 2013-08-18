@@ -24,18 +24,18 @@ from . import (
     attributes, interfaces, object_mapper, persistence,
     exc as orm_exc, loading
     )
+from .base import _entity_descriptor, _is_aliased_class, _is_mapped_class, _orm_columns
+from .path_registry import PathRegistry
 from .util import (
-    AliasedClass, ORMAdapter, _entity_descriptor, PathRegistry,
-    _is_aliased_class, _is_mapped_class, _orm_columns,
-    join as orm_join, with_parent, aliased
+    AliasedClass, ORMAdapter, join as orm_join, with_parent, aliased
     )
-from .. import sql, util, log, exc as sa_exc, inspect, inspection, \
-        types as sqltypes
+from .. import sql, util, log, exc as sa_exc, inspect, inspection
 from ..sql.expression import _interpret_as_from
 from ..sql import (
         util as sql_util,
         expression, visitors
     )
+from . import properties
 
 __all__ = ['Query', 'QueryContext', 'aliased']
 
@@ -54,7 +54,8 @@ def _generative(*assertions):
 
 _path_registry = PathRegistry.root
 
-
+@inspection._self_inspects
+@log.class_logger
 class Query(object):
     """ORM-level SQL construction object.
 
@@ -903,11 +904,10 @@ class Query(object):
         """
 
         if property is None:
-            from sqlalchemy.orm import properties
             mapper = object_mapper(instance)
 
             for prop in mapper.iterate_properties:
-                if isinstance(prop, properties.PropertyLoader) and \
+                if isinstance(prop, properties.RelationshipProperty) and \
                     prop.mapper is self._mapper_zero():
                     property = prop
                     break
@@ -2414,10 +2414,10 @@ class Query(object):
         """
         return [
             {
-                'name':ent._label_name,
-                'type':ent.type,
-                'aliased':getattr(ent, 'is_aliased_class', False),
-                'expr':ent.expr
+                'name': ent._label_name,
+                'type': ent.type,
+                'aliased': getattr(ent, 'is_aliased_class', False),
+                'expr': ent.expr
             }
             for ent in self._entities
         ]
@@ -2571,19 +2571,37 @@ class Query(object):
             The expression evaluator currently doesn't account for differing
             string collations between the database and Python.
 
-        Returns the number of rows deleted, excluding any cascades.
+        :return: the count of rows matched as returned by the database's
+          "row count" feature.
 
-        The method does *not* offer in-Python cascading of relationships - it
-        is assumed that ON DELETE CASCADE is configured for any foreign key
-        references which require it. The Session needs to be expired (occurs
-        automatically after commit(), or call expire_all()) in order for the
-        state of dependent objects subject to delete or delete-orphan cascade
-        to be correctly represented.
+        This method has several key caveats:
 
-        Note that the :meth:`.MapperEvents.before_delete` and
-        :meth:`.MapperEvents.after_delete`
-        events are **not** invoked from this method.  It instead
-        invokes :meth:`.SessionEvents.after_bulk_delete`.
+        * The method does **not** offer in-Python cascading of relationships - it
+          is assumed that ON DELETE CASCADE/SET NULL/etc. is configured for any foreign key
+          references which require it, otherwise the database may emit an
+          integrity violation if foreign key references are being enforced.
+
+          After the DELETE, dependent objects in the :class:`.Session` which
+          were impacted by an ON DELETE may not contain the current
+          state, or may have been deleted. This issue is resolved once the
+          :class:`.Session` is expired,
+          which normally occurs upon :meth:`.Session.commit` or can be forced
+          by using :meth:`.Session.expire_all`.  Accessing an expired object
+          whose row has been deleted will invoke a SELECT to locate the
+          row; when the row is not found, an :class:`.ObjectDeletedError`
+          is raised.
+
+        * The :meth:`.MapperEvents.before_delete` and
+          :meth:`.MapperEvents.after_delete`
+          events are **not** invoked from this method.  Instead, the
+          :meth:`.SessionEvents.after_bulk_delete` method is provided to act
+          upon a mass DELETE of entity rows.
+
+        .. seealso::
+
+            :meth:`.Query.update`
+
+            :ref:`inserts_and_updates` - Core SQL tutorial
 
         """
         #TODO: cascades need handling.
@@ -2622,20 +2640,50 @@ class Query(object):
             The expression evaluator currently doesn't account for differing
             string collations between the database and Python.
 
-        Returns the number of rows matched by the update.
+        :return: the count of rows matched as returned by the database's
+          "row count" feature.
 
-        The method does *not* offer in-Python cascading of relationships - it
-        is assumed that ON UPDATE CASCADE is configured for any foreign key
-        references which require it.
+        This method has several key caveats:
 
-        The Session needs to be expired (occurs automatically after commit(),
-        or call expire_all()) in order for the state of dependent objects
-        subject foreign key cascade to be correctly represented.
+        * The method does **not** offer in-Python cascading of relationships - it
+          is assumed that ON UPDATE CASCADE is configured for any foreign key
+          references which require it, otherwise the database may emit an
+          integrity violation if foreign key references are being enforced.
 
-        Note that the :meth:`.MapperEvents.before_update` and
-        :meth:`.MapperEvents.after_update`
-        events are **not** invoked from this method.  It instead
-        invokes :meth:`.SessionEvents.after_bulk_update`.
+          After the UPDATE, dependent objects in the :class:`.Session` which
+          were impacted by an ON UPDATE CASCADE may not contain the current
+          state; this issue is resolved once the :class:`.Session` is expired,
+          which normally occurs upon :meth:`.Session.commit` or can be forced
+          by using :meth:`.Session.expire_all`.
+
+        * As of 0.8, this method will support multiple table updates, as detailed
+          in :ref:`multi_table_updates`, and this behavior does extend to support
+          updates of joined-inheritance and other multiple table mappings.  However,
+          the **join condition of an inheritance mapper is currently not
+          automatically rendered**.
+          Care must be taken in any multiple-table update to explicitly include
+          the joining condition between those tables, even in mappings where
+          this is normally automatic.
+          E.g. if a class ``Engineer`` subclasses ``Employee``, an UPDATE of the
+          ``Engineer`` local table using criteria against the ``Employee``
+          local table might look like::
+
+                session.query(Engineer).\\
+                    filter(Engineer.id == Employee.id).\\
+                    filter(Employee.name == 'dilbert').\\
+                    update({"engineer_type": "programmer"})
+
+        * The :meth:`.MapperEvents.before_update` and
+          :meth:`.MapperEvents.after_update`
+          events are **not** invoked from this method.  Instead, the
+          :meth:`.SessionEvents.after_bulk_update` method is provided to act
+          upon a mass UPDATE of entity rows.
+
+        .. seealso::
+
+            :meth:`.Query.delete`
+
+            :ref:`inserts_and_updates` - Core SQL tutorial
 
         """
 
@@ -2838,8 +2886,6 @@ class Query(object):
     def __str__(self):
         return str(self._compile_context().statement)
 
-inspection._self_inspects(Query)
-
 
 class _QueryEntity(object):
     """represent an entity column returned within a Query result."""
@@ -2939,10 +2985,8 @@ class _MapperEntity(_QueryEntity):
 
         return entity.common_parent(self.entity_zero)
 
-    #_adapted_selectable = None
     def adapt_to_selectable(self, query, sel):
         query._entities.append(self)
-    #    self._adapted_selectable = sel
 
     def _get_entity_clauses(self, query, context):
 
@@ -3188,8 +3232,6 @@ class _ColumnEntity(_QueryEntity):
         return str(self.column)
 
 
-log.class_logger(Query)
-
 
 class QueryContext(object):
     multi_row_eager_loaders = False
@@ -3230,6 +3272,37 @@ class QueryContext(object):
 class AliasOption(interfaces.MapperOption):
 
     def __init__(self, alias):
+        """Return a :class:`.MapperOption` that will indicate to the query that
+        the main table has been aliased.
+
+        This is used in the very rare case that :func:`.contains_eager`
+        is being used in conjunction with a user-defined SELECT
+        statement that aliases the parent table.  E.g.::
+
+            # define an aliased UNION called 'ulist'
+            statement = users.select(users.c.user_id==7).\\
+                            union(users.select(users.c.user_id>7)).\\
+                            alias('ulist')
+
+            # add on an eager load of "addresses"
+            statement = statement.outerjoin(addresses).\\
+                            select().apply_labels()
+
+            # create query, indicating "ulist" will be an
+            # alias for the main table, "addresses"
+            # property should be eager loaded
+            query = session.query(User).options(
+                                    contains_alias('ulist'),
+                                    contains_eager('addresses'))
+
+            # then get results via the statement
+            results = query.from_statement(statement).all()
+
+        :param alias: is the string name of an alias, or a
+         :class:`~.sql.expression.Alias` object representing
+         the alias.
+
+        """
         self.alias = alias
 
     def process_query(self, query):
