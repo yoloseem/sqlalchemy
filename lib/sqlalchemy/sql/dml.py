@@ -104,6 +104,10 @@ class UpdateBase(HasPrefixes, Executable, ClauseElement):
         read the documentation notes for the database in use in
         order to determine the availability of RETURNING.
 
+        .. seealso::
+
+          :meth:`.ValuesBase.return_defaults`
+
         """
         self._returning = cols
 
@@ -333,13 +337,13 @@ class ValuesBase(UpdateBase):
            :meth:`.UpdateBase.return_defaults` leaves it intact.
 
         3. :meth:`.UpdateBase.returning` leaves the cursor's rows ready for
-           fetching using methods like :meth`:`.ResultProxy.fetchone`, whereas
-           :meth:`.UpdateBase.return_defaults` fetches the row internally.
+           fetching using methods like :meth:`.ResultProxy.fetchone`, whereas
+           :meth:`.ValuesBase.return_defaults` fetches the row internally.
            While all DBAPI backends observed so far seem to only support
            RETURNING with single-row executions,
            technically :meth:`.UpdateBase.returning` would support a backend
            that can deliver multiple RETURNING rows as well.  However
-           :meth:`.UpdateBase.return_defaults` is single-row by definition.
+           :meth:`.ValuesBase.return_defaults` is single-row by definition.
 
         :param cols: optional list of column key names or :class:`.Column`
          objects.  If omitted, all column expressions evaulated on the server
