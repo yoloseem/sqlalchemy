@@ -1930,7 +1930,6 @@ class SQLCompiler(Compiled):
         # otherwise we might iterate through individual sets of
         # "defaults", "primary key cols", etc.
         for c in stmt.table.columns:
-
             if c.key in parameters and c.key not in check_columns:
                 value = parameters.pop(c.key)
                 if elements._is_literal(value):
@@ -2030,6 +2029,9 @@ class SQLCompiler(Compiled):
                         self.returning.append(c)
                     elif not c.primary_key:
                         self.postfetch.append(c)
+                elif implicit_return_defaults and \
+                        c in implicit_return_defaults:
+                        self.returning.append(c)
 
             elif self.isupdate:
                 if c.onupdate is not None and not c.onupdate.is_sequence:
@@ -2053,6 +2055,9 @@ class SQLCompiler(Compiled):
                         self.returning.append(c)
                     else:
                         self.postfetch.append(c)
+                elif implicit_return_defaults and \
+                        c in implicit_return_defaults:
+                        self.returning.append(c)
 
         if parameters and stmt_parameters:
             check = set(parameters).intersection(

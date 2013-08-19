@@ -309,7 +309,7 @@ class ValuesBase(UpdateBase):
                 self.parameters.update(kwargs)
 
     @_generative
-    def return_defaults(self, cols=None):
+    def return_defaults(self, *cols):
         """If available, make use of a RETURNING clause for the purpose
         of fetching server-side expressions and defaults.
 
@@ -355,7 +355,7 @@ class ValuesBase(UpdateBase):
 
             :meth:`.UpdateBase.returning`
 
-            :meth:`.ResultProxy.server_returned_defaults`
+            :meth:`.ResultProxy.returned_defaults`
 
         """
         self._return_defaults = cols or True

@@ -491,9 +491,7 @@ def _emit_update_statements(base_mapper, uowtransaction,
         if mapper.base_mapper.eager_defaults:
             stmt = stmt.return_defaults()
         elif mapper.version_id_col is not None:
-            stmt = stmt.return_defaults(
-                            cols=[mapper.version_id_col]
-                        )
+            stmt = stmt.return_defaults(mapper.version_id_col)
 
         return stmt
 
@@ -581,9 +579,7 @@ def _emit_insert_statements(base_mapper, uowtransaction,
             if not has_all_defaults and base_mapper.eager_defaults:
                 statement = statement.return_defaults()
             elif mapper.version_id_col is not None:
-                statement = statement.return_defaults(
-                                cols=[mapper.version_id_col]
-                            )
+                statement = statement.return_defaults(mapper.version_id_col)
 
             for state, state_dict, params, mapper_rec, \
                         connection, value_params, \

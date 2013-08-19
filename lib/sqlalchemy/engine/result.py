@@ -621,7 +621,8 @@ class ResultProxy(object):
         else:
             return self.context.compiled_parameters[0]
 
-    def server_returned_defaults(self):
+    @property
+    def returned_defaults(self):
         """Return the values of default columns that were fetched using
         the ``returned_defaults`` feature.
 
