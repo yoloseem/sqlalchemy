@@ -439,7 +439,7 @@ class Insert(ValuesBase):
                         "This construct already inserts value expressions")
 
         self.parameters, self._has_multi_parameters = \
-                self._process_colparams(dict((n, null()) for n in names))
+                self._process_colparams(dict((n, Null()) for n in names))
 
         self.select = _interpret_as_select(select)
 
