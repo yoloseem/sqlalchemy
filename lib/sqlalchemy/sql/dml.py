@@ -460,7 +460,7 @@ class Update(ValuesBase):
 
     def __init__(self,
                 table,
-                whereclause,
+                whereclause=None,
                 values=None,
                 inline=False,
                 bind=None,
